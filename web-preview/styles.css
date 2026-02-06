@@ -1,4 +1,4 @@
-﻿/* Basic, clean styling for quick desktop testing */
+﻿/* Clean, readable styling */
 :root {
   --bg: #f6f7f8;
   --card: #ffffff;
@@ -7,6 +7,7 @@
   --accent: #2e7d32;
   --accent-dark: #1b5e20;
   --border: #e2e8f0;
+  --pill: #e8f5e9;
 }
 
 * {
@@ -160,4 +161,19 @@ body {
   font-size: 20px;
   font-weight: 600;
   background: #f9fafb;
+}
+
+.pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pill);
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.full-message {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
 }

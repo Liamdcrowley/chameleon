@@ -1,188 +1,313 @@
-﻿const statusEl = document.getElementById("status");
+﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+  runTransaction
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCULaNmeuxMVeFebXqIjuD92gaaQgwGDRc",
+  authDomain: "chameleon-486615.firebaseapp.com",
+  projectId: "chameleon-486615",
+  storageBucket: "chameleon-486615.firebasestorage.app",
+  messagingSenderId: "918185882696",
+  appId: "1:918185882696:web:742af61d2ecfc10ffd547d",
+  measurementId: "G-64DZ29FQ1D"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const roomId = "default";
+const roomRef = doc(db, "rooms", roomId);
+const playersCol = collection(roomRef, "players");
+
+const statusEl = document.getElementById("status");
 const screenEl = document.getElementById("screen");
 
 let topics = [];
+let room = null;
 let players = [];
-let screen = "setup";
-let game = null;
-let revealIndex = null;
+let currentUser = null;
+let currentPlayer = null;
+let nameDraft = "";
+let gameView = "list";
+let revealPlayerId = null;
 
 function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function loadTopics() {
-  return fetch("../chameleon_topics.json")
-    .then((response) => response.json())
-    .then((data) => {
-      topics = Array.isArray(data) ? data : [];
-      setStatus(`Loaded ${topics.length} topics`);
-    })
-    .catch(() => {
-      topics = [];
-      setStatus("Failed to load topics. Make sure the server is running.");
-    });
+async function loadTopics() {
+  try {
+    const response = await fetch("chameleon_topics.json");
+    const data = await response.json();
+    topics = Array.isArray(data) ? data : [];
+  } catch (error) {
+    topics = [];
+  }
 }
 
-function buildGame() {
-  if (players.length === 0 || topics.length === 0) return null;
-  const topic = topics[Math.floor(Math.random() * topics.length)];
+async function ensureRoom() {
+  const snap = await getDoc(roomRef);
+  if (!snap.exists()) {
+    await setDoc(roomRef, {
+      status: "waiting",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  }
+}
+
+function subscribeRoom() {
+  onSnapshot(roomRef, (snap) => {
+    room = snap.exists() ? snap.data() : { status: "waiting" };
+    if (room.status !== "in_progress") {
+      gameView = "list";
+      revealPlayerId = null;
+    }
+    render();
+  });
+}
+
+function subscribePlayers() {
+  const q = query(playersCol, orderBy("joinedAt", "asc"));
+  onSnapshot(q, (snap) => {
+    players = snap.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+    render();
+  });
+}
+
+function subscribeCurrentPlayer() {
+  if (!currentUser) return;
+  const playerRef = doc(playersCol, currentUser.uid);
+  onSnapshot(playerRef, (snap) => {
+    currentPlayer = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    if (currentPlayer && !nameDraft) {
+      nameDraft = currentPlayer.name || "";
+    }
+    render();
+  });
+}
+
+async function joinRoom() {
+  if (!currentUser) return;
+  if (room?.status === "in_progress") {
+    setStatus("Game is full right now.");
+    return;
+  }
+  const name = nameDraft.trim();
+  if (!name) {
+    setStatus("Enter a name to join.");
+    return;
+  }
+
+  const playerRef = doc(playersCol, currentUser.uid);
+  const snap = await getDoc(playerRef);
+  if (snap.exists()) {
+    await updateDoc(playerRef, {
+      name,
+      lastSeen: serverTimestamp()
+    });
+  } else {
+    await setDoc(playerRef, {
+      name,
+      joinedAt: serverTimestamp(),
+      lastSeen: serverTimestamp()
+    });
+  }
+}
+
+async function leaveRoom() {
+  if (!currentUser) return;
+  const playerRef = doc(playersCol, currentUser.uid);
+  await deleteDoc(playerRef);
+  nameDraft = "";
+}
+
+function pickTopic() {
+  if (topics.length === 0) return null;
+  const topicIndex = Math.floor(Math.random() * topics.length);
+  const topic = topics[topicIndex];
   const options = Array.isArray(topic.options) ? topic.options.filter(Boolean) : [];
   const word = options.length ? options[Math.floor(Math.random() * options.length)] : "";
-  const chameleonIndex = Math.floor(Math.random() * players.length);
   return {
-    topic: topic.topic || "Topic",
-    word,
-    options,
-    chameleonIndex,
+    topicIndex,
+    topicName: topic.topic || "Topic",
+    word
   };
 }
 
-function renderSetup() {
+async function startGame() {
+  if (!room || room.status !== "waiting") return;
+  if (!currentPlayer) {
+    setStatus("Join the room to start the game.");
+    return;
+  }
+  if (players.length === 0) {
+    setStatus("Add at least one player.");
+    return;
+  }
+  const selection = pickTopic();
+  if (!selection) {
+    setStatus("No topics available.");
+    return;
+  }
+
+  const chameleon = players[Math.floor(Math.random() * players.length)];
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(roomRef);
+      const data = snap.exists() ? snap.data() : { status: "waiting" };
+      if (data.status === "in_progress") {
+        throw new Error("already-started");
+      }
+      tx.set(
+        roomRef,
+        {
+          status: "in_progress",
+          topic: selection.topicName,
+          topicIndex: selection.topicIndex,
+          word: selection.word,
+          chameleonId: chameleon?.id || "",
+          startedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    });
+  } catch (error) {
+    setStatus("Game already started.");
+  }
+}
+
+async function endGame() {
+  if (!room) return;
+  await updateDoc(roomRef, {
+    status: "waiting",
+    updatedAt: serverTimestamp()
+  });
+  gameView = "list";
+  revealPlayerId = null;
+}
+
+function getCurrentOptions() {
+  if (!room) return [];
+  if (typeof room.topicIndex === "number" && topics[room.topicIndex]) {
+    return Array.isArray(topics[room.topicIndex].options)
+      ? topics[room.topicIndex].options
+      : [];
+  }
+  const match = topics.find((item) => item.topic === room.topic);
+  return match && Array.isArray(match.options) ? match.options : [];
+}
+
+function renderWaiting() {
+  const joined = Boolean(currentPlayer);
+  const playerList = players
+    .map((player) => {
+      const isYou = player.id === currentUser?.uid;
+      return `
+        <li class="list-item">
+          <span>${player.name || "Player"}</span>
+          ${isYou ? '<span class="pill">You</span>' : ""}
+        </li>
+      `;
+    })
+    .join("");
+
   screenEl.innerHTML = `
     <div class="card">
-      <h2>Players</h2>
+      <h2>Waiting Room</h2>
+      <p class="notice">Share this page so everyone can join. When ready, anyone can start.</p>
       <div class="row">
-        <input id="player-input" class="input" type="text" placeholder="Player name" />
-        <button id="add-player" class="button">Add Player</button>
+        <input id="player-input" class="input" type="text" placeholder="Your name" />
+        <button id="join-button" class="button">${joined ? "Update Name" : "Join Room"}</button>
       </div>
-      <ul class="list" id="players-list"></ul>
-      <div class="row" style="margin-top: 16px;">
-        <button id="start-game" class="button" ${players.length === 0 || topics.length === 0 ? "disabled" : ""}>Start Game</button>
+      <div class="row">
+        ${joined ? '<button id="leave-button" class="button secondary">Leave Room</button>' : ""}
+        <button id="start-game" class="button" ${joined && topics.length > 0 && players.length > 0 ? "" : "disabled"}>Start Game</button>
       </div>
-      <p class="notice">Add at least one player to start.</p>
+      <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
     </div>
   `;
 
   const input = document.getElementById("player-input");
-  const addBtn = document.getElementById("add-player");
+  const joinBtn = document.getElementById("join-button");
   const startBtn = document.getElementById("start-game");
-  const listEl = document.getElementById("players-list");
+  const leaveBtn = document.getElementById("leave-button");
 
-  function refreshList() {
-    listEl.innerHTML = "";
-    if (players.length === 0) {
-      listEl.innerHTML = `<li class="notice">No players yet.</li>`;
-      startBtn.disabled = true;
-      return;
-    }
-    players.forEach((name, index) => {
-      const item = document.createElement("li");
-      item.className = "list-item";
-      item.innerHTML = `
-        <span>${name}</span>
-        <button class="button secondary" data-index="${index}">Remove</button>
-      `;
-      listEl.appendChild(item);
-    });
-    startBtn.disabled = topics.length === 0;
+  input.value = nameDraft || currentPlayer?.name || "";
+  input.addEventListener("input", (event) => {
+    nameDraft = event.target.value;
+  });
+
+  joinBtn.addEventListener("click", joinRoom);
+  startBtn.addEventListener("click", startGame);
+  if (leaveBtn) {
+    leaveBtn.addEventListener("click", leaveRoom);
   }
-
-  addBtn.addEventListener("click", () => {
-    const value = input.value.trim();
-    if (!value) return;
-    players.push(value);
-    input.value = "";
-    refreshList();
-  });
-
-  input.addEventListener("keypress", (event) => {
-    if (event.key === "Enter") {
-      addBtn.click();
-    }
-  });
-
-  listEl.addEventListener("click", (event) => {
-    const button = event.target.closest("button");
-    if (!button) return;
-    const index = Number(button.dataset.index);
-    if (!Number.isNaN(index)) {
-      players.splice(index, 1);
-      refreshList();
-    }
-  });
-
-  startBtn.addEventListener("click", () => {
-    const newGame = buildGame();
-    if (!newGame) return;
-    game = newGame;
-    screen = "game";
-    render();
-  });
-
-  refreshList();
 }
 
 function renderGame() {
-  if (!game) {
-    screen = "setup";
-    render();
-    return;
-  }
+  if (!room) return;
+  const topic = room.topic || "Topic";
 
   screenEl.innerHTML = `
     <div class="card">
       <div class="row" style="justify-content: space-between;">
-        <button id="back-setup" class="button ghost">Back to setup</button>
-        <button id="new-game" class="button secondary">New Game</button>
+        <button id="end-game" class="button ghost">End Game</button>
+        <button id="show-options" class="button secondary">Show Options (Landscape)</button>
       </div>
-      <div class="topic">Topic: ${game.topic}</div>
-      <button id="show-options" class="button" style="margin-bottom: 8px;">Show Options (Landscape)</button>
-      <p class="notice">Pass the phone and click your name to reveal your role.</p>
+      <div class="topic">Topic: ${topic}</div>
+      <p class="notice">Click your name to reveal your role.</p>
       <ul class="list" id="player-buttons"></ul>
     </div>
   `;
 
-  const backBtn = document.getElementById("back-setup");
-  const newGameBtn = document.getElementById("new-game");
-  const showOptionsBtn = document.getElementById("show-options");
   const listEl = document.getElementById("player-buttons");
-
-  players.forEach((name, index) => {
+  players.forEach((player) => {
     const item = document.createElement("li");
     item.className = "list-item";
-    item.innerHTML = `<button class="button" data-index="${index}" style="width: 100%;">${name}</button>`;
+    item.innerHTML = `<button class="button" data-id="${player.id}" style="width: 100%;">${player.name || "Player"}</button>`;
     listEl.appendChild(item);
   });
 
-  backBtn.addEventListener("click", () => {
-    game = null;
-    screen = "setup";
-    render();
-  });
-
-  newGameBtn.addEventListener("click", () => {
-    const newGame = buildGame();
-    if (!newGame) return;
-    game = newGame;
-    render();
-  });
-
-  showOptionsBtn.addEventListener("click", () => {
-    screen = "options";
+  document.getElementById("end-game").addEventListener("click", endGame);
+  document.getElementById("show-options").addEventListener("click", () => {
+    gameView = "options";
     render();
   });
 
   listEl.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
-    const index = Number(button.dataset.index);
-    if (!Number.isNaN(index)) {
-      revealIndex = index;
-      screen = "reveal";
+    revealPlayerId = button.dataset.id || null;
+    if (revealPlayerId) {
+      gameView = "reveal";
       render();
     }
   });
 }
 
 function renderOptions() {
-  if (!game) {
-    screen = "setup";
-    render();
-    return;
-  }
-
-  const options = Array.isArray(game.options) ? game.options : [];
+  if (!room) return;
+  const options = getCurrentOptions();
   const optionsHtml = options.length
     ? options.map((option) => `<div class="option-card">${option}</div>`).join("")
     : `<div class="notice">No options available.</div>`;
@@ -193,56 +318,102 @@ function renderOptions() {
         <button id="back-game" class="button ghost">Back to game</button>
         <div class="title">All Options</div>
       </div>
-      <div class="topic">Topic: ${game.topic}</div>
+      <div class="topic">Topic: ${room.topic || "Topic"}</div>
       <div class="notice">Rotate to landscape for maximum visibility.</div>
-      <div class="options-grid">
-        ${optionsHtml}
-      </div>
+      <div class="options-grid">${optionsHtml}</div>
     </div>
   `;
 
   document.getElementById("back-game").addEventListener("click", () => {
-    screen = "game";
+    gameView = "list";
     render();
   });
 }
 
 function renderReveal() {
-  if (!game || revealIndex === null) {
-    screen = "game";
-    render();
-    return;
-  }
-
-  const playerName = players[revealIndex] || "Player";
-  const isChameleon = revealIndex === game.chameleonIndex;
+  if (!room) return;
+  const player = players.find((item) => item.id === revealPlayerId);
+  const playerName = player?.name || "Player";
+  const isChameleon = revealPlayerId === room.chameleonId;
 
   screenEl.innerHTML = `
     <div class="card">
       <h2>Player: ${playerName}</h2>
-      <div class="topic">Topic: ${game.topic}</div>
-      ${isChameleon ? `<div class="role">You are the Chameleon</div>` : `<div class="role">Your word</div><div class="word">${game.word || "No word available"}</div>`}
+      <div class="topic">Topic: ${room.topic || "Topic"}</div>
+      ${isChameleon ? `<div class="role">You are the Chameleon</div>` : `<div class="role">Your word</div><div class="word">${room.word || "No word available"}</div>`}
       <button id="done" class="button">Done</button>
     </div>
   `;
 
   document.getElementById("done").addEventListener("click", () => {
-    screen = "game";
-    revealIndex = null;
+    gameView = "list";
+    revealPlayerId = null;
     render();
   });
 }
 
-function render() {
-  if (screen === "setup") {
-    renderSetup();
-  } else if (screen === "game") {
-    renderGame();
-  } else if (screen === "options") {
-    renderOptions();
-  } else {
-    renderReveal();
-  }
+function renderFull() {
+  screenEl.innerHTML = `
+    <div class="card">
+      <div class="full-message">Game in progress</div>
+      <p class="notice">This room is full right now. Please try again later.</p>
+      <button id="refresh" class="button secondary">Check again</button>
+    </div>
+  `;
+  document.getElementById("refresh").addEventListener("click", () => {
+    window.location.reload();
+  });
 }
 
-loadTopics().then(render);
+function render() {
+  if (!currentUser || !room) {
+    setStatus("Connecting...");
+    return;
+  }
+
+  if (room.status === "waiting") {
+    setStatus(`Waiting room • ${players.length} player${players.length === 1 ? "" : "s"}`);
+    renderWaiting();
+    return;
+  }
+
+  if (room.status === "in_progress") {
+    if (!currentPlayer) {
+      setStatus("Game in progress");
+      renderFull();
+      return;
+    }
+    setStatus("Game in progress");
+    if (gameView === "options") {
+      renderOptions();
+    } else if (gameView === "reveal") {
+      renderReveal();
+    } else {
+      renderGame();
+    }
+    return;
+  }
+
+  setStatus("Loading...");
+}
+
+async function init() {
+  await loadTopics();
+  signInAnonymously(auth).catch(() => {
+    setStatus("Failed to sign in.");
+  });
+
+  onAuthStateChanged(auth, async (user) => {
+    currentUser = user;
+    if (user) {
+      await ensureRoom();
+      subscribeRoom();
+      subscribePlayers();
+      subscribeCurrentPlayer();
+    } else {
+      render();
+    }
+  });
+}
+
+init();
