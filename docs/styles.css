@@ -33,6 +33,11 @@ body {
   border-radius: 16px;
   padding: 20px 24px;
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .app-header h1 {

@@ -35,6 +35,7 @@ const playersCol = collection(roomRef, "players");
 
 const statusEl = document.getElementById("status");
 const screenEl = document.getElementById("screen");
+const headerActionsEl = document.getElementById("header-actions");
 
 let topics = [];
 let room = null;
@@ -217,6 +218,20 @@ function getCurrentOptions() {
   return match && Array.isArray(match.options) ? match.options : [];
 }
 
+function renderHeaderActions() {
+  if (!headerActionsEl) return;
+  headerActionsEl.innerHTML = "";
+  if (!room || room.status !== "waiting") return;
+  const disabled = !(currentPlayer && topics.length > 0 && players.length > 0);
+  headerActionsEl.innerHTML = `
+    <button id="header-start" class="button" ${disabled ? "disabled" : ""}>Everyone Ready</button>
+  `;
+  const startBtn = document.getElementById("header-start");
+  if (startBtn) {
+    startBtn.addEventListener("click", startGame);
+  }
+}
+
 function renderWaiting() {
   const joined = Boolean(currentPlayer);
   const playerList = players
@@ -234,14 +249,12 @@ function renderWaiting() {
   screenEl.innerHTML = `
     <div class="card">
       <h2>Waiting Room</h2>
-      <p class="notice">Share this page so everyone can join. When ready, anyone can start.</p>
       <div class="row">
         <input id="player-input" class="input" type="text" placeholder="Your name" />
         <button id="join-button" class="button">${joined ? "Update Name" : "Join Room"}</button>
       </div>
       <div class="row">
         ${joined ? '<button id="leave-button" class="button secondary">Leave Room</button>' : ""}
-        <button id="start-game" class="button" ${joined && topics.length > 0 && players.length > 0 ? "" : "disabled"}>Start Game</button>
       </div>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
     </div>
@@ -249,7 +262,6 @@ function renderWaiting() {
 
   const input = document.getElementById("player-input");
   const joinBtn = document.getElementById("join-button");
-  const startBtn = document.getElementById("start-game");
   const leaveBtn = document.getElementById("leave-button");
 
   input.value = nameDraft || currentPlayer?.name || "";
@@ -258,7 +270,6 @@ function renderWaiting() {
   });
 
   joinBtn.addEventListener("click", joinRoom);
-  startBtn.addEventListener("click", startGame);
   if (leaveBtn) {
     leaveBtn.addEventListener("click", leaveRoom);
   }
@@ -272,7 +283,7 @@ function renderGame() {
     <div class="card">
       <div class="row" style="justify-content: space-between;">
         <button id="end-game" class="button ghost">End Game</button>
-        <button id="show-options" class="button secondary">Show Options (Landscape)</button>
+        <button id="show-options" class="button secondary">Show Options</button>
       </div>
       <div class="topic">Topic: ${topic}</div>
       <p class="notice">Click your name to reveal your role.</p>
@@ -375,8 +386,13 @@ function renderFull() {
 function render() {
   if (!currentUser || !room) {
     setStatus("Connecting...");
+    if (headerActionsEl) {
+      headerActionsEl.innerHTML = "";
+    }
     return;
   }
+
+  renderHeaderActions();
 
   if (room.status === "waiting") {
     setStatus(`Waiting room • ${players.length} player${players.length === 1 ? "" : "s"}`);
