@@ -230,6 +230,29 @@ async function clearPlayers() {
   await batch.commit();
 }
 
+async function resetGame() {
+  if (!room) return;
+  await updateDoc(roomRef, {
+    status: "waiting",
+    voteStatus: "inactive",
+    votes: {},
+    voteResults: deleteField(),
+    updatedAt: serverTimestamp()
+  });
+  const snap = await getDocs(playersCol);
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  snap.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+  batch.update(roomRef, {
+    updatedAt: serverTimestamp()
+  });
+  await batch.commit();
+  gameView = "list";
+  revealPlayerId = null;
+}
+
 async function callVote() {
   if (!room || room.status !== "in_progress") return;
   if (!currentPlayer) return;
@@ -565,9 +588,13 @@ function renderFull() {
     <div class="card">
       <div class="full-message">Game in progress</div>
       <p class="notice">This room is full right now. Please try again later.</p>
-      <button id="refresh" class="button secondary">Check again</button>
+      <div class="row" style="justify-content: space-between;">
+        <button id="reset-game" class="button">Reset Game</button>
+        <button id="refresh" class="button secondary">Check again</button>
+      </div>
     </div>
   `;
+  document.getElementById("reset-game").addEventListener("click", resetGame);
   document.getElementById("refresh").addEventListener("click", () => {
     window.location.reload();
   });
