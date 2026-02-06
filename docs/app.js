@@ -54,7 +54,7 @@ function setStatus(text) {
 
 async function loadTopics() {
   try {
-    const response = await fetch("chameleon_topics.json");
+    const response = await fetch("chameleon_topics_60.json");
     const data = await response.json();
     topics = Array.isArray(data) ? data : [];
   } catch (error) {
