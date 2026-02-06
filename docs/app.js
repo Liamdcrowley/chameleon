@@ -4,6 +4,7 @@ import {
   getFirestore,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -13,7 +14,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  runTransaction
+  runTransaction,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -215,6 +217,19 @@ async function endGame() {
   revealPlayerId = null;
 }
 
+async function clearPlayers() {
+  if (!room || room.status !== "waiting") return;
+  const snap = await getDocs(playersCol);
+  const batch = writeBatch(db);
+  snap.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+  batch.update(roomRef, {
+    updatedAt: serverTimestamp()
+  });
+  await batch.commit();
+}
+
 async function callVote() {
   if (!room || room.status !== "in_progress") return;
   if (!currentPlayer) return;
@@ -304,10 +319,15 @@ function renderHeaderActions() {
     const disabled = !(currentPlayer && topics.length > 0 && players.length > 0);
     headerActionsEl.innerHTML = `
       <button id="header-start" class="button" ${disabled ? "disabled" : ""}>Everyone Ready</button>
+      <button id="header-clear" class="button secondary">Clear Players</button>
     `;
     const startBtn = document.getElementById("header-start");
     if (startBtn) {
       startBtn.addEventListener("click", startGame);
+    }
+    const clearBtn = document.getElementById("header-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", clearPlayers);
     }
   } else if (room.status === "in_progress" && currentPlayer) {
     headerActionsEl.innerHTML = `
