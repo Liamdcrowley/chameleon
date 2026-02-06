@@ -284,7 +284,13 @@ function renderGame() {
   players.forEach((player) => {
     const item = document.createElement("li");
     item.className = "list-item";
-    item.innerHTML = `<button class="button" data-id="${player.id}" style="width: 100%;">${player.name || "Player"}</button>`;
+    const isYou = player.id === currentUser?.uid;
+    const label = isYou ? `${player.name || "Player"} (You)` : (player.name || "Player");
+    item.innerHTML = `
+      <button class="button ${isYou ? "" : "secondary"}" data-id="${player.id}" style="width: 100%;" ${isYou ? "" : "disabled"}>
+        ${label}
+      </button>
+    `;
     listEl.appendChild(item);
   });
 
@@ -297,11 +303,12 @@ function renderGame() {
   listEl.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
-    revealPlayerId = button.dataset.id || null;
-    if (revealPlayerId) {
-      gameView = "reveal";
-      render();
-    }
+    if (button.disabled) return;
+    const targetId = button.dataset.id || null;
+    if (!targetId || targetId !== currentUser?.uid) return;
+    revealPlayerId = targetId;
+    gameView = "reveal";
+    render();
   });
 }
 
