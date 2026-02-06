@@ -7,6 +7,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   collection,
   query,
   orderBy,
@@ -45,6 +46,7 @@ let currentPlayer = null;
 let nameDraft = "";
 let gameView = "list";
 let revealPlayerId = null;
+let voteFinalizeInProgress = false;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -186,6 +188,9 @@ async function startGame() {
           topicIndex: selection.topicIndex,
           word: selection.word,
           chameleonId: chameleon?.id || "",
+          voteStatus: "inactive",
+          votes: {},
+          voteResults: deleteField(),
           startedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         },
@@ -201,10 +206,81 @@ async function endGame() {
   if (!room) return;
   await updateDoc(roomRef, {
     status: "waiting",
+    voteStatus: "inactive",
+    votes: {},
+    voteResults: deleteField(),
     updatedAt: serverTimestamp()
   });
   gameView = "list";
   revealPlayerId = null;
+}
+
+async function callVote() {
+  if (!room || room.status !== "in_progress") return;
+  if (!currentPlayer) return;
+  if (room.voteStatus === "open") return;
+  await updateDoc(roomRef, {
+    voteStatus: "open",
+    votes: {},
+    voteResults: deleteField(),
+    voteStartedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+}
+
+async function castVote(targetId) {
+  if (!room || room.status !== "in_progress") return;
+  if (room.voteStatus !== "open") return;
+  if (!currentUser || !targetId) return;
+  if (targetId === currentUser.uid) return;
+  await updateDoc(roomRef, {
+    [`votes.${currentUser.uid}`]: targetId,
+    updatedAt: serverTimestamp()
+  });
+}
+
+async function cancelVote() {
+  if (!room || room.status !== "in_progress") return;
+  if (room.voteStatus !== "open") return;
+  if (!currentUser) return;
+  await updateDoc(roomRef, {
+    [`votes.${currentUser.uid}`]: deleteField(),
+    updatedAt: serverTimestamp()
+  });
+}
+
+async function finalizeVoteIfReady() {
+  if (voteFinalizeInProgress) return;
+  if (!room || room.status !== "in_progress") return;
+  if (room.voteStatus !== "open") return;
+  if (!players.length) return;
+  const votes = room.votes || {};
+  const voteCount = Object.keys(votes).length;
+  if (voteCount < players.length) return;
+
+  const tally = {};
+  Object.values(votes).forEach((targetId) => {
+    if (!targetId) return;
+    tally[targetId] = (tally[targetId] || 0) + 1;
+  });
+  const results = players
+    .map((player) => ({
+      id: player.id,
+      name: player.name || "Player",
+      count: tally[player.id] || 0
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  voteFinalizeInProgress = true;
+  try {
+    await updateDoc(roomRef, {
+      voteStatus: "complete",
+      voteResults: results,
+      updatedAt: serverTimestamp()
+    });
+  } finally {
+    voteFinalizeInProgress = false;
+  }
 }
 
 function getCurrentOptions() {
@@ -221,14 +297,25 @@ function getCurrentOptions() {
 function renderHeaderActions() {
   if (!headerActionsEl) return;
   headerActionsEl.innerHTML = "";
-  if (!room || room.status !== "waiting") return;
-  const disabled = !(currentPlayer && topics.length > 0 && players.length > 0);
-  headerActionsEl.innerHTML = `
-    <button id="header-start" class="button" ${disabled ? "disabled" : ""}>Everyone Ready</button>
-  `;
-  const startBtn = document.getElementById("header-start");
-  if (startBtn) {
-    startBtn.addEventListener("click", startGame);
+  if (!room) return;
+
+  if (room.status === "waiting") {
+    const disabled = !(currentPlayer && topics.length > 0 && players.length > 0);
+    headerActionsEl.innerHTML = `
+      <button id="header-start" class="button" ${disabled ? "disabled" : ""}>Everyone Ready</button>
+    `;
+    const startBtn = document.getElementById("header-start");
+    if (startBtn) {
+      startBtn.addEventListener("click", startGame);
+    }
+  } else if (room.status === "in_progress" && currentPlayer) {
+    headerActionsEl.innerHTML = `
+      <button id="header-end" class="button ghost">End Game</button>
+    `;
+    const endBtn = document.getElementById("header-end");
+    if (endBtn) {
+      endBtn.addEventListener("click", endGame);
+    }
   }
 }
 
@@ -278,16 +365,79 @@ function renderWaiting() {
 function renderGame() {
   if (!room) return;
   const topic = room.topic || "Topic";
+  const voteStatus = room.voteStatus || "inactive";
+  const voteMap = room.votes || {};
+  const voteCount = Object.keys(voteMap).length;
+  const totalVotes = players.length;
+  const yourVote = currentUser ? voteMap[currentUser.uid] : null;
+
+  let voteHtml = `
+    <div class="row" style="justify-content: flex-end;">
+      <button id="call-vote" class="button">Call Vote</button>
+    </div>
+  `;
+
+  if (voteStatus === "open") {
+    const voteList = players
+      .filter((player) => player.id !== currentUser?.uid)
+      .map((player) => {
+        const selected = yourVote === player.id;
+        const buttonClass = selected ? "button" : "button secondary";
+        return `
+          <li class="list-item">
+            <button class="${buttonClass}" data-id="${player.id}" style="width: 100%;">
+              ${player.name || "Player"}
+            </button>
+          </li>
+        `;
+      })
+      .join("");
+
+    voteHtml = `
+      <div class="row" style="justify-content: space-between; align-items: center;">
+        <div class="title">Voting (${voteCount}/${totalVotes})</div>
+        <button id="cancel-vote" class="button secondary" ${yourVote ? "" : "disabled"}>Cancel Vote</button>
+      </div>
+      <p class="notice">Tap another player to vote.</p>
+      <ul class="list" id="vote-buttons">
+        ${voteList || '<li class="notice">No other players.</li>'}
+      </ul>
+    `;
+  }
+
+  if (voteStatus === "complete") {
+    const results = Array.isArray(room.voteResults) ? room.voteResults : [];
+    const resultsHtml = results
+      .map((result) => `
+        <li class="list-item">
+          <span>${result.name}</span>
+          <span class="pill">${result.count}</span>
+        </li>
+      `)
+      .join("");
+
+    voteHtml = `
+      <div class="title">Vote Results</div>
+      <ul class="list">
+        ${resultsHtml || '<li class="notice">No votes recorded.</li>'}
+      </ul>
+      <div class="row" style="justify-content: flex-end;">
+        <button id="call-vote" class="button">Call Vote</button>
+      </div>
+    `;
+  }
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content: space-between;">
-        <button id="end-game" class="button ghost">End Game</button>
-        <button id="show-options" class="button secondary">Show Options</button>
+      <div class="row" style="justify-content: flex-end;">
+        <button id="show-options" class="button secondary wide">Show Options</button>
       </div>
       <div class="topic">Topic: ${topic}</div>
       <p class="notice">Click your name to reveal your role.</p>
       <ul class="list" id="player-buttons"></ul>
+      <div class="vote-block">
+        ${voteHtml}
+      </div>
     </div>
   `;
 
@@ -305,7 +455,6 @@ function renderGame() {
     listEl.appendChild(item);
   });
 
-  document.getElementById("end-game").addEventListener("click", endGame);
   document.getElementById("show-options").addEventListener("click", () => {
     gameView = "options";
     render();
@@ -321,6 +470,28 @@ function renderGame() {
     gameView = "reveal";
     render();
   });
+
+  const callVoteBtn = document.getElementById("call-vote");
+  if (callVoteBtn) {
+    callVoteBtn.addEventListener("click", callVote);
+  }
+
+  const cancelVoteBtn = document.getElementById("cancel-vote");
+  if (cancelVoteBtn) {
+    cancelVoteBtn.addEventListener("click", cancelVote);
+  }
+
+  const voteListEl = document.getElementById("vote-buttons");
+  if (voteListEl) {
+    voteListEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const targetId = button.dataset.id;
+      if (targetId) {
+        castVote(targetId);
+      }
+    });
+  }
 }
 
 function renderOptions() {
@@ -332,12 +503,10 @@ function renderOptions() {
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content: space-between;">
-        <button id="back-game" class="button ghost">Back to game</button>
-        <div class="title">All Options</div>
+      <div class="row" style="justify-content: flex-end;">
+        <button id="back-game" class="button secondary wide">Hide Options</button>
       </div>
       <div class="topic">Topic: ${room.topic || "Topic"}</div>
-      <div class="notice">Rotate to landscape for maximum visibility.</div>
       <div class="options-grid">${optionsHtml}</div>
     </div>
   `;
@@ -407,6 +576,7 @@ function render() {
       return;
     }
     setStatus("Game in progress");
+    finalizeVoteIfReady();
     if (gameView === "options") {
       renderOptions();
     } else if (gameView === "reveal") {

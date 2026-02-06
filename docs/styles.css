@@ -91,6 +91,10 @@ body {
   font-weight: 600;
 }
 
+.button.wide {
+  min-width: 150px;
+}
+
 .button:disabled {
   background: #3a3a3a;
   cursor: not-allowed;
@@ -156,6 +160,12 @@ body {
   gap: 12px;
   margin-top: 12px;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.vote-block {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 .option-card {
