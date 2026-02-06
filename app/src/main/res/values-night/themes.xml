@@ -1,0 +1,6 @@
+﻿<resources>
+    <style name="Theme.Chameleon" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
