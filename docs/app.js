@@ -242,9 +242,10 @@ async function castVote(targetId) {
 async function cancelVote() {
   if (!room || room.status !== "in_progress") return;
   if (room.voteStatus !== "open") return;
-  if (!currentUser) return;
   await updateDoc(roomRef, {
-    [`votes.${currentUser.uid}`]: deleteField(),
+    voteStatus: "inactive",
+    votes: {},
+    voteResults: deleteField(),
     updatedAt: serverTimestamp()
   });
 }
@@ -396,7 +397,7 @@ function renderGame() {
     voteHtml = `
       <div class="row" style="justify-content: space-between; align-items: center;">
         <div class="title">Voting (${voteCount}/${totalVotes})</div>
-        <button id="cancel-vote" class="button secondary" ${yourVote ? "" : "disabled"}>Cancel Vote</button>
+        <button id="cancel-vote" class="button secondary">Cancel Vote</button>
       </div>
       <p class="notice">Tap another player to vote.</p>
       <ul class="list" id="vote-buttons">
