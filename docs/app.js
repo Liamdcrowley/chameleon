@@ -59,7 +59,7 @@ let nameDraft = localStorage.getItem("chameleon_name") || "";
 let lobbyNameDraft = "";
 let lobbyCodeDraft = "";
 let view = "lobbies"; // lobbies | lobby
-let gameView = "list"; // list | options | reveal
+let gameView = "list"; // list | reveal
 let revealPlayerId = null;
 let voteFinalizeInProgress = false;
 
@@ -708,6 +708,10 @@ function renderLobbyGame() {
     : !inRound
       ? "This round is already running. You'll join the next round."
       : "";
+  const options = getCurrentOptions();
+  const optionsHtml = options.length
+    ? options.map((option) => `<div class="option-card">${option}</div>`).join("")
+    : `<div class="notice">No options available.</div>`;
 
   const playerList = players
     .map((player) => {
@@ -808,12 +812,14 @@ function renderLobbyGame() {
         <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Lobby"}</button>
       </div>
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
+      <div class="board">
+        <div class="topic">Topic: ${room.topic || "Topic"}</div>
+        <div class="options-grid board-grid">${optionsHtml}</div>
+      </div>
       <div class="row">
         <button id="new-round" class="button">New Round</button>
         <button id="end-round" class="button secondary">End Round</button>
-        <button id="show-options" class="button ghost">Show Options</button>
       </div>
-      <div class="topic">Topic: ${room.topic || "Topic"}</div>
       <p class="notice">Click your name to reveal your role.</p>
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${waitingPlayers.length ? `<p class="notice">${waitingPlayers.length} player${waitingPlayers.length === 1 ? "" : "s"} queued for next round.</p>` : ""}
@@ -843,14 +849,6 @@ function renderLobbyGame() {
   const endRoundBtn = document.getElementById("end-round");
   if (endRoundBtn) {
     endRoundBtn.addEventListener("click", endRound);
-  }
-
-  const showOptionsBtn = document.getElementById("show-options");
-  if (showOptionsBtn) {
-    showOptionsBtn.addEventListener("click", () => {
-      gameView = "options";
-      render();
-    });
   }
 
   const listEl = document.getElementById("player-buttons");
@@ -904,37 +902,6 @@ function renderLobbyGame() {
         setStatus("Unable to copy lobby code.");
       }
     });
-  }
-}
-
-function renderOptions() {
-  const options = getCurrentOptions();
-  const optionsHtml = options.length
-    ? options.map((option) => `<div class="option-card">${option}</div>`).join("")
-    : `<div class="notice">No options available.</div>`;
-
-  screenEl.innerHTML = `
-    <div class="card">
-      <div class="row" style="justify-content: space-between;">
-        <button id="back-game" class="button secondary">Back to Game</button>
-        <button id="new-round" class="button">New Round</button>
-      </div>
-      <div class="topic">Topic: ${room?.topic || "Topic"}</div>
-      <div class="options-grid">${optionsHtml}</div>
-    </div>
-  `;
-
-  const backBtn = document.getElementById("back-game");
-  if (backBtn) {
-    backBtn.addEventListener("click", () => {
-      gameView = "list";
-      render();
-    });
-  }
-
-  const newRoundBtn = document.getElementById("new-round");
-  if (newRoundBtn) {
-    newRoundBtn.addEventListener("click", startRound);
   }
 }
 
@@ -1007,9 +974,7 @@ function render() {
   if (room.status === "in_progress") {
     setStatus(`Round in progress • ${players.length} player${players.length === 1 ? "" : "s"}`);
     finalizeVoteIfReady();
-    if (gameView === "options") {
-      renderOptions();
-    } else if (gameView === "reveal") {
+    if (gameView === "reveal") {
       renderReveal();
     } else {
       renderLobbyGame();

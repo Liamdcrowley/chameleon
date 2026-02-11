@@ -211,11 +211,28 @@ body {
   align-items: center;
 }
 
+.board {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  margin: 16px 0;
+  background: linear-gradient(180deg, #181818 0%, #111111 100%);
+}
+
+.board .topic {
+  margin-top: 0;
+  font-size: 24px;
+}
+
+.board-grid {
+  margin-top: 16px;
+}
+
 .options-grid {
   display: grid;
   gap: 12px;
   margin-top: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .vote-block {
@@ -227,11 +244,15 @@ body {
 .option-card {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 14px;
+  padding: 16px;
   text-align: center;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   background: #1b1b1b;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .pill {
