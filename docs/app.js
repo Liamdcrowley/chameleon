@@ -49,6 +49,7 @@ let nameDraft = localStorage.getItem("chameleon_name") || "";
 let gameView = "list"; // list | reveal
 let revealPlayerId = null;
 let voteFinalizeInProgress = false;
+let optionFitRafId = 0;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -112,6 +113,41 @@ function getCurrentOptions() {
   const match = topics.find((item) => item.topic === room.topic);
   return match && Array.isArray(match.options) ? match.options : [];
 }
+
+function fitOptionText() {
+  const labels = document.querySelectorAll(".option-card .option-text");
+  labels.forEach((label) => {
+    const card = label.parentElement;
+    if (!card) return;
+    const maxSize = 24;
+    const minSize = 11;
+    const maxWidth = Math.max(1, card.clientWidth - 14);
+    const maxHeight = Math.max(1, card.clientHeight - 10);
+
+    let size = maxSize;
+    label.style.fontSize = `${size}px`;
+    while (size > minSize && (label.scrollWidth > maxWidth || label.scrollHeight > maxHeight)) {
+      size -= 1;
+      label.style.fontSize = `${size}px`;
+    }
+  });
+}
+
+function queueOptionFit() {
+  if (optionFitRafId) {
+    cancelAnimationFrame(optionFitRafId);
+  }
+  optionFitRafId = requestAnimationFrame(() => {
+    optionFitRafId = 0;
+    fitOptionText();
+  });
+}
+
+window.addEventListener("resize", () => {
+  if (room?.status === "in_progress" && gameView === "list") {
+    queueOptionFit();
+  }
+});
 
 async function loadTopics() {
   try {
@@ -448,7 +484,7 @@ function renderWaiting() {
       ${
         joinedPlayer
           ? `<div class="row"><span class="notice">Joined as ${joinedPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button></div>`
-          : `<div class="row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
+          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
       }
       <div class="row">
         <button id="start-round" class="button" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
@@ -506,7 +542,7 @@ function renderGame() {
 
   const options = getCurrentOptions();
   const optionsHtml = options.length
-    ? options.map((option) => `<div class="option-card">${option}</div>`).join("")
+    ? options.map((option) => `<div class="option-card"><span class="option-text">${option}</span></div>`).join("")
     : `<div class="notice">No options available.</div>`;
 
   const playerList = activePlayers
@@ -587,7 +623,7 @@ function renderGame() {
         ${
           joinedPlayer
             ? `<span class="notice">Joined as ${joinedPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button>`
-            : `<input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button>`
+            : `<div class="join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
         }
       </div>
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
@@ -599,6 +635,8 @@ function renderGame() {
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${waitingPlayers.length ? `<p class="notice">${waitingPlayers.length} player${waitingPlayers.length === 1 ? "" : "s"} queued for next round.</p>` : ""}
       ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
+    </div>
+    <div class="card controls-bubble">
       <div class="row action-row game-actions">
         <button id="call-vote" class="button action-left" ${inRound && room.voteStatus !== "open" ? "" : "disabled"}>Call Vote</button>
         <button id="new-round" class="button">New Round</button>
@@ -668,6 +706,8 @@ function renderGame() {
       }
     });
   }
+
+  queueOptionFit();
 }
 
 function renderReveal() {

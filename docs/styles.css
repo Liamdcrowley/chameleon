@@ -92,10 +92,19 @@ body {
 
 .input {
   flex: 1;
+  min-width: 0;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
   font-size: 14px;
+}
+
+.join-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 .button {
@@ -241,6 +250,10 @@ body {
   margin-right: auto;
 }
 
+.controls-bubble {
+  padding: 14px 18px;
+}
+
 .option-card {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -253,6 +266,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.option-text {
+  display: block;
+  width: 100%;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .pill {
