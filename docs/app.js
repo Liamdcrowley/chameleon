@@ -204,6 +204,37 @@ async function clearPlayers() {
   await batch.commit();
 }
 
+async function resetGame() {
+  if (!room) return;
+  const shouldReset = window.confirm("Reset the game and remove all players?");
+  if (!shouldReset) return;
+
+  const snap = await getDocs(playersCol);
+  const batch = writeBatch(db);
+  snap.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+  batch.update(roomRef, {
+    status: "waiting",
+    round: 0,
+    topic: deleteField(),
+    topicIndex: deleteField(),
+    word: deleteField(),
+    chameleonId: deleteField(),
+    roundPlayerIds: deleteField(),
+    topicBag: [],
+    voteStatus: "inactive",
+    votes: {},
+    voteResults: deleteField(),
+    startedAt: deleteField(),
+    voteStartedAt: deleteField(),
+    updatedAt: serverTimestamp()
+  });
+  await batch.commit();
+  gameView = "list";
+  revealPlayerId = null;
+}
+
 async function startRound() {
   if (!room) return;
   if (!currentPlayer) {
@@ -403,6 +434,9 @@ function renderWaiting() {
         <button id="clear-players" class="button secondary" ${players.length ? "" : "disabled"}>Clear Players</button>
         ${currentPlayer ? '<button id="leave-room" class="button ghost">Leave</button>' : ""}
       </div>
+      <div class="row">
+        <button id="reset-game" class="button ghost">Reset Game</button>
+      </div>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
     </div>
   `;
@@ -432,6 +466,11 @@ function renderWaiting() {
   const leaveBtn = document.getElementById("leave-room");
   if (leaveBtn) {
     leaveBtn.addEventListener("click", leaveRoom);
+  }
+
+  const resetBtn = document.getElementById("reset-game");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetGame);
   }
 }
 
@@ -557,6 +596,7 @@ function renderGame() {
       <div class="row">
         <button id="new-round" class="button">New Round</button>
         <button id="end-round" class="button secondary">End Round</button>
+        <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
       <p class="notice">Tap your name to reveal your role.</p>
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -592,6 +632,11 @@ function renderGame() {
   const endRoundBtn = document.getElementById("end-round");
   if (endRoundBtn) {
     endRoundBtn.addEventListener("click", endRound);
+  }
+
+  const resetBtn = document.getElementById("reset-game");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetGame);
   }
 
   const listEl = document.getElementById("player-buttons");
