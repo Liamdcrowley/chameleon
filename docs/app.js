@@ -232,6 +232,11 @@ async function resetGame() {
   await batch.commit();
   gameView = "list";
   revealPlayerId = null;
+  currentPlayer = null;
+  players = [];
+  nameDraft = "";
+  localStorage.removeItem("chameleon_name");
+  render();
 }
 
 async function startRound() {
@@ -652,22 +657,13 @@ function renderGame() {
 
 function renderReveal() {
   if (!room) return;
-  const isInRound = isCurrentUserInRound();
-  const player = players.find((item) => item.id === revealPlayerId);
-  const playerName = player?.name || "Player";
   const isChameleon = revealPlayerId === room.chameleonId;
+  const revealText = isChameleon ? "You are the Chameleon" : (room.word || "No word available");
+  const revealClass = isChameleon ? "role" : "word";
 
   screenEl.innerHTML = `
     <div class="card">
-      <h2>Player: ${playerName}</h2>
-      <div class="topic">Topic: ${room.topic || "Topic"}</div>
-      ${
-        !isInRound
-          ? `<div class="notice">You are queued for the next round.</div>`
-          : isChameleon
-            ? `<div class="role">You are the Chameleon</div>`
-            : `<div class="role">Your word</div><div class="word">${room.word || "No word available"}</div>`
-      }
+      <div class="${revealClass}">${revealText}</div>
       <button id="done" class="button">Done</button>
     </div>
   `;
