@@ -63,7 +63,7 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function wireNameInput(input, { locked = false } = {}) {
+function wireNameInput(input) {
   if (!input) return;
   input.setAttribute("autocomplete", "one-time-code");
   input.setAttribute("autofill", "off");
@@ -78,14 +78,7 @@ function wireNameInput(input, { locked = false } = {}) {
   input.setAttribute("data-1p-ignore", "true");
   input.setAttribute("data-bwignore", "true");
   input.readOnly = true;
-  if (locked) {
-    input.classList.add("locked-input");
-    input.setAttribute("aria-disabled", "true");
-  } else {
-    input.classList.remove("locked-input");
-    input.removeAttribute("aria-disabled");
-  }
-  if (locked) return;
+  input.removeAttribute("aria-disabled");
   const unlock = () => {
     input.readOnly = false;
   };
@@ -281,6 +274,7 @@ async function joinRoom() {
     const isCurrentReset = (existing.joinedReset ?? -1) === resetCounter;
     if (isCurrentReset) {
       await updateDoc(playerRef, {
+        name,
         lastSeen: serverTimestamp()
       });
     } else {
@@ -523,7 +517,6 @@ function renderHeaderActions() {
 
 function renderWaiting() {
   const activePlayers = getActivePlayers();
-  const joinedPlayer = getCurrentJoinedPlayer();
   const joinUrl = window.location.href;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&margin=8&data=${encodeURIComponent(joinUrl)}`;
   const playerList = activePlayers
@@ -535,15 +528,17 @@ function renderWaiting() {
     .join("");
 
   screenEl.innerHTML = `
-    <div class="card">
+    <div class="card home-start-card">
       <div class="row action-row home-center-row">
         <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
+    </div>
+    <div class="card">
       <form id="join-form" class="row join-row" autocomplete="off" novalidate>
         <input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" />
         <input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" />
         <input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" />
-        <button id="join-button" class="button ${joinedPlayer ? "ghost" : "secondary"} home-equal-btn" type="submit">Join Game</button>
+        <button id="join-button" class="button secondary home-equal-btn" type="submit">Join Game</button>
       </form>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       <div class="home-qr-wrap">
@@ -556,7 +551,7 @@ function renderWaiting() {
   `;
 
   const input = document.getElementById("player-input");
-  wireNameInput(input, { locked: Boolean(joinedPlayer) });
+  wireNameInput(input);
 
   const joinForm = document.getElementById("join-form");
   if (joinForm) {
