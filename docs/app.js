@@ -70,15 +70,30 @@ function sanitizeTopicBag(topicBag) {
   );
 }
 
+function getResetCounter() {
+  return Number.isInteger(room?.resetCounter) ? room.resetCounter : 0;
+}
+
+function getActivePlayers() {
+  const resetCounter = getResetCounter();
+  return players.filter((player) => (player.joinedReset ?? -1) === resetCounter);
+}
+
+function getCurrentJoinedPlayer() {
+  if (!currentPlayer) return null;
+  return (currentPlayer.joinedReset ?? -1) === getResetCounter() ? currentPlayer : null;
+}
+
 function getRoundPlayerIds() {
+  const activePlayers = getActivePlayers();
   let roundIds = [];
   if (room && Array.isArray(room.roundPlayerIds) && room.roundPlayerIds.length) {
     roundIds = room.roundPlayerIds.slice();
   } else {
-    roundIds = players.map((player) => player.id);
+    roundIds = activePlayers.map((player) => player.id);
   }
-  if (!players.length) return roundIds;
-  const activeSet = new Set(players.map((player) => player.id));
+  if (!activePlayers.length) return roundIds;
+  const activeSet = new Set(activePlayers.map((player) => player.id));
   return roundIds.filter((playerId) => activeSet.has(playerId));
 }
 
@@ -114,6 +129,7 @@ async function ensureRoom() {
   await setDoc(roomRef, {
     status: "waiting",
     round: 0,
+    resetCounter: 0,
     topicBag: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -147,7 +163,7 @@ function subscribeCurrentPlayer() {
   const playerRef = doc(playersCol, currentUser.uid);
   onSnapshot(playerRef, (snap) => {
     currentPlayer = snap.exists() ? { id: snap.id, ...snap.data() } : null;
-    if (currentPlayer && !nameDraft) {
+    if (currentPlayer && !nameDraft && (currentPlayer.joinedReset ?? -1) === getResetCounter()) {
       nameDraft = currentPlayer.name || "";
     }
     render();
@@ -155,7 +171,7 @@ function subscribeCurrentPlayer() {
 }
 
 async function joinRoom() {
-  if (!currentUser) return;
+  if (!currentUser || !room) return;
   const name = nameDraft.trim();
   if (!name) {
     setStatus("Enter a name to join.");
@@ -164,13 +180,25 @@ async function joinRoom() {
 
   const playerRef = doc(playersCol, currentUser.uid);
   const snap = await getDoc(playerRef);
+  const resetCounter = getResetCounter();
   if (snap.exists()) {
-    await updateDoc(playerRef, {
-      lastSeen: serverTimestamp()
-    });
+    const existing = snap.data() || {};
+    const isCurrentReset = (existing.joinedReset ?? -1) === resetCounter;
+    if (isCurrentReset) {
+      await updateDoc(playerRef, {
+        lastSeen: serverTimestamp()
+      });
+    } else {
+      await updateDoc(playerRef, {
+        name,
+        joinedReset: resetCounter,
+        lastSeen: serverTimestamp()
+      });
+    }
   } else {
     await setDoc(playerRef, {
       name,
+      joinedReset: resetCounter,
       joinedAt: serverTimestamp(),
       lastSeen: serverTimestamp()
     });
@@ -191,12 +219,18 @@ async function leaveRoom() {
 
 async function clearPlayers() {
   if (!room || room.status !== "waiting") return;
+  const resetCounter = getResetCounter();
   const snap = await getDocs(playersCol);
-  if (snap.empty) return;
   const batch = writeBatch(db);
+  let hasDeletes = false;
   snap.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
+    const data = docSnap.data() || {};
+    if ((data.joinedReset ?? -1) === resetCounter) {
+      hasDeletes = true;
+      batch.delete(docSnap.ref);
+    }
   });
+  if (!hasDeletes) return;
   batch.update(roomRef, {
     updatedAt: serverTimestamp()
   });
@@ -208,28 +242,39 @@ async function resetGame() {
   const shouldReset = window.confirm("Reset the game and remove all players?");
   if (!shouldReset) return;
 
-  const snap = await getDocs(playersCol);
-  const batch = writeBatch(db);
-  snap.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
+  await runTransaction(db, async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    const roomData = roomSnap.exists() ? roomSnap.data() : {};
+    const nextResetCounter = (roomData.resetCounter || 0) + 1;
+    tx.set(roomRef, {
+      status: "waiting",
+      round: 0,
+      resetCounter: nextResetCounter,
+      topic: deleteField(),
+      topicIndex: deleteField(),
+      word: deleteField(),
+      chameleonId: deleteField(),
+      roundPlayerIds: deleteField(),
+      topicBag: [],
+      voteStatus: "inactive",
+      votes: {},
+      voteResults: deleteField(),
+      startedAt: deleteField(),
+      voteStartedAt: deleteField(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
   });
-  batch.update(roomRef, {
-    status: "waiting",
-    round: 0,
-    topic: deleteField(),
-    topicIndex: deleteField(),
-    word: deleteField(),
-    chameleonId: deleteField(),
-    roundPlayerIds: deleteField(),
-    topicBag: [],
-    voteStatus: "inactive",
-    votes: {},
-    voteResults: deleteField(),
-    startedAt: deleteField(),
-    voteStartedAt: deleteField(),
-    updatedAt: serverTimestamp()
-  });
-  await batch.commit();
+
+  let snap = await getDocs(playersCol);
+  while (!snap.empty) {
+    const batch = writeBatch(db);
+    snap.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+    snap = await getDocs(playersCol);
+  }
+
   gameView = "list";
   revealPlayerId = null;
   currentPlayer = null;
@@ -241,11 +286,13 @@ async function resetGame() {
 
 async function startRound() {
   if (!room) return;
-  if (!currentPlayer) {
+  const joinedPlayer = getCurrentJoinedPlayer();
+  if (!joinedPlayer) {
     setStatus("Join the room to start a round.");
     return;
   }
-  if (players.length === 0) {
+  const activePlayers = getActivePlayers();
+  if (activePlayers.length === 0) {
     setStatus("Add at least one player.");
     return;
   }
@@ -254,7 +301,7 @@ async function startRound() {
     return;
   }
 
-  const roundPlayerIds = players.map((player) => player.id);
+  const roundPlayerIds = activePlayers.map((player) => player.id);
   if (roundPlayerIds.length === 0) {
     setStatus("No players available.");
     return;
@@ -402,7 +449,9 @@ function renderHeaderActions() {
 }
 
 function renderWaiting() {
-  const playerList = players
+  const activePlayers = getActivePlayers();
+  const joinedPlayer = getCurrentJoinedPlayer();
+  const playerList = activePlayers
     .map((player) => {
       const isYou = player.id === currentUser?.uid;
       return `
@@ -417,13 +466,13 @@ function renderWaiting() {
   screenEl.innerHTML = `
     <div class="card">
       ${
-        currentPlayer
-          ? `<div class="row"><span class="notice">Joined as ${currentPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button></div>`
+        joinedPlayer
+          ? `<div class="row"><span class="notice">Joined as ${joinedPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button></div>`
           : `<div class="row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
       }
       <div class="row">
-        <button id="start-round" class="button" ${players.length && topics.length ? "" : "disabled"}>Start Round</button>
-        <button id="clear-players" class="button secondary" ${players.length ? "" : "disabled"}>Clear Players</button>
+        <button id="start-round" class="button" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
+        <button id="clear-players" class="button secondary" ${activePlayers.length ? "" : "disabled"}>Clear Players</button>
       </div>
       <div class="row">
         <button id="reset-game" class="button ghost">Reset Game</button>
@@ -468,12 +517,14 @@ function renderWaiting() {
 function renderGame() {
   if (!room) return;
 
+  const activePlayers = getActivePlayers();
+  const joinedPlayer = getCurrentJoinedPlayer();
   const roundIds = getRoundPlayerIds();
-  const roundPlayers = players.filter((player) => roundIds.includes(player.id));
-  const waitingPlayers = players.filter((player) => !roundIds.includes(player.id));
+  const roundPlayers = activePlayers.filter((player) => roundIds.includes(player.id));
+  const waitingPlayers = activePlayers.filter((player) => !roundIds.includes(player.id));
   const inRound = isCurrentUserInRound();
 
-  const joinNotice = !currentPlayer
+  const joinNotice = !joinedPlayer
     ? "You are spectating. Join now to play next round."
     : !inRound
       ? "You joined during this round. You are queued for next round."
@@ -484,7 +535,7 @@ function renderGame() {
     ? options.map((option) => `<div class="option-card">${option}</div>`).join("")
     : `<div class="notice">No options available.</div>`;
 
-  const playerList = players
+  const playerList = activePlayers
     .map((player) => {
       const isYou = player.id === currentUser?.uid;
       const isActive = roundIds.includes(player.id);
@@ -569,8 +620,8 @@ function renderGame() {
     <div class="card">
       <div class="row" style="justify-content: flex-end; align-items: center; flex-wrap: wrap;">
         ${
-          currentPlayer
-            ? `<span class="notice">Joined as ${currentPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button>`
+          joinedPlayer
+            ? `<span class="notice">Joined as ${joinedPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button>`
             : `<input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button>`
         }
       </div>
@@ -694,13 +745,15 @@ function render() {
   renderHeaderActions();
 
   if (room.status === "waiting") {
-    setStatus(`Waiting room • ${players.length} player${players.length === 1 ? "" : "s"}`);
+    const activeCount = getActivePlayers().length;
+    setStatus(`Waiting room • ${activeCount} player${activeCount === 1 ? "" : "s"}`);
     renderWaiting();
     return;
   }
 
   if (room.status === "in_progress") {
-    setStatus(`Round in progress • ${players.length} player${players.length === 1 ? "" : "s"}`);
+    const activeCount = getActivePlayers().length;
+    setStatus(`Round in progress • ${activeCount} player${activeCount === 1 ? "" : "s"}`);
     finalizeVoteIfReady();
     if (gameView === "reveal") {
       renderReveal();
