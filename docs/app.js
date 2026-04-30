@@ -534,7 +534,7 @@ function renderWaiting() {
       ${
         joinedPlayer
           ? ""
-          : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button home-equal-btn" type="submit">Join Game</button></form>`
+          : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary home-equal-btn" type="submit">Join Game</button></form>`
       }
       ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -609,9 +609,10 @@ function renderGame() {
       }
       const pillHtml = pills.length ? `<span class="pill-group">${pills.join("")}</span>` : "";
       const disabled = !isYou || !isActive;
+      const playerButtonStyle = isYou ? "ghost" : "secondary";
       return `
         <li class="list-item">
-          <button class="button ${isYou ? "" : "secondary"}" data-id="${player.id}" style="width: 100%;" ${disabled ? "disabled" : ""}>
+          <button class="button ${playerButtonStyle}" data-id="${player.id}" style="width: 100%;" ${disabled ? "disabled" : ""}>
             ${player.name || "Player"}
           </button>
           ${pillHtml}

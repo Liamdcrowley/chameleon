@@ -264,6 +264,17 @@ body {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+}
+
+.player-card-actions .button {
+  width: 100%;
+}
+
+.player-card-actions .action-left {
+  margin-right: 0;
 }
 
 .board-card {
