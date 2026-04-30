@@ -45,13 +45,19 @@ let room = null;
 let players = [];
 let currentUser = null;
 let currentPlayer = null;
-let nameDraft = localStorage.getItem("chameleon_name") || "";
+let nameDraft = "";
 let gameView = "list"; // list | reveal
 let revealPlayerId = null;
 let voteFinalizeInProgress = false;
 let optionFitRafId = 0;
 const textMeasureCanvas = document.createElement("canvas");
 const textMeasureCtx = textMeasureCanvas.getContext("2d");
+
+try {
+  localStorage.removeItem("chameleon_name");
+} catch (error) {
+  // Ignore storage access issues.
+}
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -263,14 +269,13 @@ async function joinRoom() {
   await updateDoc(roomRef, {
     updatedAt: serverTimestamp()
   });
-  localStorage.setItem("chameleon_name", name);
 }
 
 async function leaveRoom() {
   if (!currentUser) return;
   const playerRef = doc(playersCol, currentUser.uid);
   await deleteDoc(playerRef);
-  nameDraft = localStorage.getItem("chameleon_name") || "";
+  nameDraft = "";
 }
 
 async function resetGame() {
@@ -316,7 +321,6 @@ async function resetGame() {
   currentPlayer = null;
   players = [];
   nameDraft = "";
-  localStorage.removeItem("chameleon_name");
   render();
 }
 
@@ -497,19 +501,19 @@ function renderWaiting() {
 
   screenEl.innerHTML = `
     <div class="card">
+      <div class="row action-row home-center-row">
+        <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
+      </div>
       ${
         joinedPlayer
           ? ""
-          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
+          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button home-equal-btn">Join Game</button></div>`
       }
-      <div class="row action-row game-actions">
-        <button id="start-round" class="button" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
-      </div>
-      <div class="row split-row control-secondary">
-        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave Game</button>' : "<span></span>"}
-        <button id="reset-game" class="button ghost">Reset Game</button>
-      </div>
+      ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
+      <div class="row action-row home-center-row home-reset-row">
+        <button id="reset-game" class="button ghost home-equal-btn">Reset Game</button>
+      </div>
     </div>
   `;
 
@@ -634,7 +638,7 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`}
+      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button">Join Game</button></div>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
@@ -644,10 +648,8 @@ function renderGame() {
       </div>
     </div>
     <div class="card board-card">
-      <div class="board">
-        <div class="topic">${room.topic || "Topic"}</div>
-        <div class="options-grid board-grid">${optionsHtml}</div>
-      </div>
+      <div class="topic">${room.topic || "Topic"}</div>
+      <div class="options-grid board-grid">${optionsHtml}</div>
     </div>
     <div class="card controls-bubble">
       <div class="row split-row control-secondary">

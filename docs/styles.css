@@ -147,6 +147,11 @@ body {
   border: 1px solid var(--accent);
 }
 
+#call-vote,
+#reset-game {
+  min-width: 140px;
+}
+
 .list {
   margin: 12px 0 0 0;
   padding: 0;
@@ -207,19 +212,6 @@ body {
   align-items: center;
 }
 
-.board {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
-  margin: 16px 0;
-  background: linear-gradient(180deg, #181818 0%, #111111 100%);
-}
-
-.board .topic {
-  margin-top: 0;
-  font-size: 24px;
-}
-
 .board-grid {
   margin-top: 16px;
 }
@@ -265,12 +257,14 @@ body {
 }
 
 .board-card {
-  padding: 14px;
+  padding: 16px;
   margin: 22px 0;
+  background: linear-gradient(180deg, #181818 0%, #111111 100%);
 }
 
-.board-card .board {
-  margin: 0;
+.board-card .topic {
+  margin-top: 0;
+  font-size: 24px;
 }
 
 .split-row {
@@ -280,6 +274,23 @@ body {
 
 .control-secondary {
   margin-top: 10px;
+}
+
+.home-action-row {
+  margin-top: 10px;
+}
+
+.home-center-row {
+  justify-content: center;
+}
+
+.home-reset-row {
+  margin-top: 14px;
+}
+
+.home-equal-btn {
+  width: 140px;
+  min-width: 140px;
 }
 
 .option-card {
