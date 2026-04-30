@@ -394,8 +394,6 @@ function renderWaiting() {
 
   screenEl.innerHTML = `
     <div class="card">
-      <h2>Board Ready</h2>
-      <p class="notice">Everyone joins here. Start a round whenever your group is ready.</p>
       <div class="row">
         <input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" />
         <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Game"}</button>
