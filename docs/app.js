@@ -51,6 +51,7 @@ let revealPlayerId = null;
 let voteFinalizeInProgress = false;
 let optionFitRafId = 0;
 let renameUnjoinInProgress = false;
+let waitingQrOpen = false;
 const textMeasureCanvas = document.createElement("canvas");
 const textMeasureCtx = textMeasureCanvas.getContext("2d");
 
@@ -317,6 +318,7 @@ async function resetGame() {
   if (!room) return;
   const shouldReset = window.confirm("Reset the game and remove all players?");
   if (!shouldReset) return;
+  waitingQrOpen = false;
 
   await runTransaction(db, async (tx) => {
     const roomSnap = await tx.get(roomRef);
@@ -526,20 +528,42 @@ function renderHeaderActions() {
 function renderWaiting() {
   const activePlayers = getActivePlayers();
   const joinedPlayer = getCurrentJoinedPlayer();
+  const maxSlots = 8;
   const joinUrl = window.location.href;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&margin=8&data=${encodeURIComponent(joinUrl)}`;
-  const playerList = activePlayers
-    .map((player) => `
-      <li class="list-item">
-        <span>${player.name || "Player"}</span>
+  const slotRows = Array.from({ length: maxSlots }, (_, index) => {
+    const player = activePlayers[index] || null;
+    const isEmpty = !player;
+    return `
+      <li class="player-slot ${isEmpty ? "empty" : "filled"}">
+        <span>${player ? (player.name || "Player") : "Empty Slot"}</span>
       </li>
-    `)
-    .join("");
+    `;
+  }).join("");
+
+  if (waitingQrOpen) {
+    screenEl.innerHTML = `
+      <div class="qr-fullscreen">
+        <img class="qr-fullscreen-image" src="${qrUrl}" alt="QR code to join the game" />
+        <div class="qr-fullscreen-actions">
+          <button id="close-code" class="button secondary home-equal-btn">Back</button>
+        </div>
+      </div>
+    `;
+    const closeCodeBtn = document.getElementById("close-code");
+    if (closeCodeBtn) {
+      closeCodeBtn.addEventListener("click", () => {
+        waitingQrOpen = false;
+        render();
+      });
+    }
+    return;
+  }
 
   screenEl.innerHTML = `
     <div class="card action-shell">
       <div class="row action-row home-center-row">
-        <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
+        <button id="start-round" class="button home-equal-btn">Start Round</button>
       </div>
     </div>
     <div class="card">
@@ -549,13 +573,11 @@ function renderWaiting() {
         <input id="player-input" class="input join-input ${joinedPlayer ? "joined" : ""}" type="search" placeholder="Your name" value="${nameDraft}" />
         <button id="join-button" class="button join-submit ${joinedPlayer ? "join-joined" : "join-ready"}" type="submit">Join</button>
       </form>
-      <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
-      <div class="home-qr-wrap">
-        <img class="home-qr" src="${qrUrl}" alt="QR code to join the game" loading="lazy" />
-      </div>
+      <ul class="list player-slots">${slotRows}</ul>
     </div>
     <div class="card action-shell home-reset-row">
-      <div class="row action-row home-center-row">
+      <div class="row action-row home-center-row home-bottom-actions">
+        <button id="show-code" class="button secondary home-equal-btn">Code</button>
         <button id="reset-game" class="button ghost home-equal-btn">Reset Game</button>
       </div>
     </div>
@@ -602,6 +624,14 @@ function renderWaiting() {
   const joinBtn = document.getElementById("join-button");
   if (joinBtn && !joinForm) {
     joinBtn.addEventListener("click", joinRoom);
+  }
+
+  const showCodeBtn = document.getElementById("show-code");
+  if (showCodeBtn) {
+    showCodeBtn.addEventListener("click", () => {
+      waitingQrOpen = true;
+      render();
+    });
   }
 
   const startBtn = document.getElementById("start-round");
@@ -836,6 +866,9 @@ function render() {
   }
 
   renderHeaderActions();
+  if (room.status !== "waiting") {
+    waitingQrOpen = false;
+  }
 
   if (room.status === "waiting") {
     setStatus("");

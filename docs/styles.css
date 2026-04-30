@@ -352,17 +352,58 @@ body {
   min-width: 140px;
 }
 
-.home-qr-wrap {
-  margin-top: 14px;
+.home-bottom-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 140px));
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
 }
 
-.home-qr {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
+.player-slots {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.player-slot {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #141414;
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+}
+
+.player-slot.empty {
+  color: var(--muted);
+  background: #101010;
+}
+
+.qr-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #090909;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.qr-fullscreen-image {
+  width: min(96vw, 640px);
+  max-height: calc(100vh - 150px);
+  object-fit: contain;
+  border-radius: 14px;
   border: 1px solid var(--border);
   background: #ffffff;
+}
+
+.qr-fullscreen-actions {
+  margin-top: 16px;
 }
 
 .option-card {
