@@ -509,7 +509,7 @@ function renderWaiting() {
       ${
         joinedPlayer
           ? ""
-          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button home-equal-btn">Join Game</button></div>`
+          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button secondary home-equal-btn">Join Game</button></div>`
       }
       ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -643,7 +643,7 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button">Join Game</button></div>`}
+      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button secondary">Join Game</button></div>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
