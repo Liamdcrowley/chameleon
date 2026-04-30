@@ -65,6 +65,10 @@ body {
   margin-bottom: 12px;
 }
 
+.status:empty {
+  display: none;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -252,6 +256,21 @@ body {
 
 .controls-bubble {
   padding: 14px 18px;
+}
+
+.player-card-actions {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.board-card {
+  padding: 14px;
+  margin: 22px 0;
+}
+
+.board-card .board {
+  margin: 0;
 }
 
 .split-row {

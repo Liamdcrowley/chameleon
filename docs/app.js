@@ -488,15 +488,11 @@ function renderWaiting() {
   const activePlayers = getActivePlayers();
   const joinedPlayer = getCurrentJoinedPlayer();
   const playerList = activePlayers
-    .map((player) => {
-      const isYou = player.id === currentUser?.uid;
-      return `
-        <li class="list-item">
-          <span>${player.name || "Player"}</span>
-          ${isYou ? '<span class="pill">You</span>' : ""}
-        </li>
-      `;
-    })
+    .map((player) => `
+      <li class="list-item">
+        <span>${player.name || "Player"}</span>
+      </li>
+    `)
     .join("");
 
   screenEl.innerHTML = `
@@ -510,7 +506,7 @@ function renderWaiting() {
         <button id="start-round" class="button" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
       <div class="row split-row control-secondary">
-        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave</button>' : "<span></span>"}
+        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave Game</button>' : "<span></span>"}
         <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -552,7 +548,6 @@ function renderGame() {
   const joinedPlayer = getCurrentJoinedPlayer();
   const roundIds = getRoundPlayerIds();
   const roundPlayers = activePlayers.filter((player) => roundIds.includes(player.id));
-  const waitingPlayers = activePlayers.filter((player) => !roundIds.includes(player.id));
   const inRound = isCurrentUserInRound();
 
   const joinNotice = !joinedPlayer
@@ -571,11 +566,10 @@ function renderGame() {
       const isYou = player.id === currentUser?.uid;
       const isActive = roundIds.includes(player.id);
       const pills = [];
-      if (isYou) pills.push('<span class="pill">You</span>');
       if (!isActive) {
         pills.push('<span class="pill muted">Next</span>');
       }
-      const pillHtml = `<span class="pill-group">${pills.join("")}</span>`;
+      const pillHtml = pills.length ? `<span class="pill-group">${pills.join("")}</span>` : "";
       const disabled = !isYou || !isActive;
       return `
         <li class="list-item">
@@ -642,22 +636,22 @@ function renderGame() {
     <div class="card">
       ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
+      <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
+      ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
+      <div class="row action-row game-actions player-card-actions">
+        <button id="call-vote" class="button action-left" ${inRound && room.voteStatus !== "open" ? "" : "disabled"}>Call Vote</button>
+        <button id="new-round" class="button">New Round</button>
+      </div>
+    </div>
+    <div class="card board-card">
       <div class="board">
         <div class="topic">${room.topic || "Topic"}</div>
         <div class="options-grid board-grid">${optionsHtml}</div>
       </div>
-      <p class="notice">Tap your name to reveal your role.</p>
-      <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
-      ${waitingPlayers.length ? `<p class="notice">${waitingPlayers.length} player${waitingPlayers.length === 1 ? "" : "s"} queued for next round.</p>` : ""}
-      ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
     </div>
     <div class="card controls-bubble">
-      <div class="row action-row game-actions">
-        <button id="call-vote" class="button action-left" ${inRound && room.voteStatus !== "open" ? "" : "disabled"}>Call Vote</button>
-        <button id="new-round" class="button">New Round</button>
-      </div>
       <div class="row split-row control-secondary">
-        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave</button>' : "<span></span>"}
+        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave Game</button>' : "<span></span>"}
         <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
     </div>
@@ -767,15 +761,13 @@ function render() {
   renderHeaderActions();
 
   if (room.status === "waiting") {
-    const activeCount = getActivePlayers().length;
-    setStatus(`Waiting room • ${activeCount} player${activeCount === 1 ? "" : "s"}`);
+    setStatus("");
     renderWaiting();
     return;
   }
 
   if (room.status === "in_progress") {
-    const activeCount = getActivePlayers().length;
-    setStatus(`${activeCount} player${activeCount === 1 ? "" : "s"}`);
+    setStatus("");
     finalizeVoteIfReady();
     if (gameView === "reveal") {
       renderReveal();
