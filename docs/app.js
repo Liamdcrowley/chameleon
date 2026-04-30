@@ -166,7 +166,6 @@ async function joinRoom() {
   const snap = await getDoc(playerRef);
   if (snap.exists()) {
     await updateDoc(playerRef, {
-      name,
       lastSeen: serverTimestamp()
     });
   } else {
@@ -304,19 +303,6 @@ async function startRound() {
   }
 }
 
-async function endRound() {
-  if (!room) return;
-  await updateDoc(roomRef, {
-    status: "waiting",
-    voteStatus: "inactive",
-    votes: {},
-    voteResults: deleteField(),
-    updatedAt: serverTimestamp()
-  });
-  gameView = "list";
-  revealPlayerId = null;
-}
-
 async function callVote() {
   if (!room || room.status !== "in_progress") return;
   if (!currentPlayer || !isCurrentUserInRound()) return;
@@ -425,14 +411,14 @@ function renderWaiting() {
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="row">
-        <input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" />
-        <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Game"}</button>
-      </div>
+      ${
+        currentPlayer
+          ? `<div class="row"><span class="notice">Joined as ${currentPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button></div>`
+          : `<div class="row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
+      }
       <div class="row">
         <button id="start-round" class="button" ${players.length && topics.length ? "" : "disabled"}>Start Round</button>
         <button id="clear-players" class="button secondary" ${players.length ? "" : "disabled"}>Clear Players</button>
-        ${currentPlayer ? '<button id="leave-room" class="button ghost">Leave</button>' : ""}
       </div>
       <div class="row">
         <button id="reset-game" class="button ghost">Reset Game</button>
@@ -477,7 +463,6 @@ function renderWaiting() {
 function renderGame() {
   if (!room) return;
 
-  const roundNumber = room.round || 0;
   const roundIds = getRoundPlayerIds();
   const roundPlayers = players.filter((player) => roundIds.includes(player.id));
   const waitingPlayers = players.filter((player) => !roundIds.includes(player.id));
@@ -577,32 +562,27 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
-        <div>
-          <div class="eyebrow">Round ${roundNumber}</div>
-          <div class="title">Live Board</div>
-        </div>
-        <div class="row">
-          <input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" />
-          <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Game"}</button>
-          ${currentPlayer ? '<button id="leave-room" class="button ghost">Leave</button>' : ""}
-        </div>
+      <div class="row" style="justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+        ${
+          currentPlayer
+            ? `<span class="notice">Joined as ${currentPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button>`
+            : `<input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button>`
+        }
       </div>
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <div class="board">
         <div class="topic">Topic: ${room.topic || "Topic"}</div>
         <div class="options-grid board-grid">${optionsHtml}</div>
       </div>
-      <div class="row">
-        <button id="new-round" class="button">New Round</button>
-        <button id="end-round" class="button secondary">End Round</button>
-        <button id="reset-game" class="button ghost">Reset Game</button>
-      </div>
       <p class="notice">Tap your name to reveal your role.</p>
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${waitingPlayers.length ? `<p class="notice">${waitingPlayers.length} player${waitingPlayers.length === 1 ? "" : "s"} queued for next round.</p>` : ""}
       <div class="vote-block">
         ${voteHtml}
+      </div>
+      <div class="row" style="justify-content: flex-end;">
+        <button id="new-round" class="button">New Round</button>
+        <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
     </div>
   `;
@@ -627,11 +607,6 @@ function renderGame() {
   const newRoundBtn = document.getElementById("new-round");
   if (newRoundBtn) {
     newRoundBtn.addEventListener("click", startRound);
-  }
-
-  const endRoundBtn = document.getElementById("end-round");
-  if (endRoundBtn) {
-    endRoundBtn.addEventListener("click", endRound);
   }
 
   const resetBtn = document.getElementById("reset-game");
