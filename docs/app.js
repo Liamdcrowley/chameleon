@@ -63,6 +63,26 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+function wireNameInput(input) {
+  if (!input) return;
+  input.setAttribute("autocomplete", "off");
+  input.setAttribute("autocorrect", "off");
+  input.setAttribute("autocapitalize", "none");
+  input.setAttribute("spellcheck", "false");
+  input.setAttribute("inputmode", "text");
+  input.setAttribute("enterkeyhint", "done");
+  input.setAttribute("name", `nickname_${Date.now()}`);
+  input.readOnly = true;
+  const unlock = () => {
+    input.readOnly = false;
+  };
+  input.addEventListener("focus", unlock, { once: true });
+  input.addEventListener("touchstart", unlock, { once: true });
+  input.addEventListener("input", (event) => {
+    nameDraft = event.target.value;
+  });
+}
+
 function shuffleArray(items) {
   const copy = items.slice();
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -509,7 +529,7 @@ function renderWaiting() {
       ${
         joinedPlayer
           ? ""
-          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button secondary home-equal-btn">Join Game</button></div>`
+          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary home-equal-btn">Join Game</button></div>`
       }
       ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -523,11 +543,7 @@ function renderWaiting() {
   `;
 
   const input = document.getElementById("player-input");
-  if (input) {
-    input.addEventListener("input", (event) => {
-      nameDraft = event.target.value;
-    });
-  }
+  wireNameInput(input);
 
   const joinBtn = document.getElementById("join-button");
   if (joinBtn) {
@@ -643,7 +659,7 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" /><button id="join-button" class="button secondary">Join Game</button></div>`}
+      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary">Join Game</button></div>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
@@ -665,11 +681,7 @@ function renderGame() {
   `;
 
   const input = document.getElementById("player-input");
-  if (input) {
-    input.addEventListener("input", (event) => {
-      nameDraft = event.target.value;
-    });
-  }
+  wireNameInput(input);
 
   const joinBtn = document.getElementById("join-button");
   if (joinBtn) {
