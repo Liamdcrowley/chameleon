@@ -35,18 +35,20 @@ body {
   margin-bottom: 16px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 .app-header h1 {
-  margin: 0 0 4px 0;
+  margin: 0;
+  width: 100%;
+  text-align: center;
   font-size: 28px;
 }
 
 #header-actions {
-  display: flex;
+  display: none;
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
@@ -98,12 +100,18 @@ body {
 
 .button {
   padding: 10px 14px;
+  min-height: 42px;
   border-radius: 10px;
   border: none;
   background: var(--accent);
   color: white;
   cursor: pointer;
   font-weight: 600;
+  line-height: 1.15;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .button.wide {
@@ -148,6 +156,7 @@ body {
 .topic {
   font-size: 22px;
   margin: 8px 0 16px 0;
+  text-align: center;
 }
 
 .title {
@@ -217,6 +226,19 @@ body {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+.action-row {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.game-actions {
+  width: 100%;
+}
+
+.action-left {
+  margin-right: auto;
 }
 
 .option-card {

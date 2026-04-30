@@ -217,26 +217,6 @@ async function leaveRoom() {
   nameDraft = localStorage.getItem("chameleon_name") || "";
 }
 
-async function clearPlayers() {
-  if (!room || room.status !== "waiting") return;
-  const resetCounter = getResetCounter();
-  const snap = await getDocs(playersCol);
-  const batch = writeBatch(db);
-  let hasDeletes = false;
-  snap.forEach((docSnap) => {
-    const data = docSnap.data() || {};
-    if ((data.joinedReset ?? -1) === resetCounter) {
-      hasDeletes = true;
-      batch.delete(docSnap.ref);
-    }
-  });
-  if (!hasDeletes) return;
-  batch.update(roomRef, {
-    updatedAt: serverTimestamp()
-  });
-  await batch.commit();
-}
-
 async function resetGame() {
   if (!room) return;
   const shouldReset = window.confirm("Reset the game and remove all players?");
@@ -472,7 +452,6 @@ function renderWaiting() {
       }
       <div class="row">
         <button id="start-round" class="button" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
-        <button id="clear-players" class="button secondary" ${activePlayers.length ? "" : "disabled"}>Clear Players</button>
       </div>
       <div class="row">
         <button id="reset-game" class="button ghost">Reset Game</button>
@@ -496,11 +475,6 @@ function renderWaiting() {
   const startBtn = document.getElementById("start-round");
   if (startBtn) {
     startBtn.addEventListener("click", startRound);
-  }
-
-  const clearBtn = document.getElementById("clear-players");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", clearPlayers);
   }
 
   const leaveBtn = document.getElementById("leave-room");
@@ -541,9 +515,7 @@ function renderGame() {
       const isActive = roundIds.includes(player.id);
       const pills = [];
       if (isYou) pills.push('<span class="pill">You</span>');
-      if (isActive) {
-        pills.push('<span class="pill success">Round</span>');
-      } else {
+      if (!isActive) {
         pills.push('<span class="pill muted">Next</span>');
       }
       const pillHtml = `<span class="pill-group">${pills.join("")}</span>`;
@@ -559,11 +531,7 @@ function renderGame() {
     })
     .join("");
 
-  let voteHtml = `
-    <div class="row" style="justify-content: flex-end;">
-      <button id="call-vote" class="button" ${inRound ? "" : "disabled"}>Call Vote</button>
-    </div>
-  `;
+  let voteHtml = "";
 
   if (room.voteStatus === "open") {
     const voteList = roundPlayers
@@ -610,9 +578,6 @@ function renderGame() {
       <ul class="list">
         ${resultsHtml || '<li class="notice">No votes recorded.</li>'}
       </ul>
-      <div class="row" style="justify-content: flex-end;">
-        <button id="call-vote" class="button" ${inRound ? "" : "disabled"}>Call Vote</button>
-      </div>
     `;
   }
 
@@ -627,16 +592,15 @@ function renderGame() {
       </div>
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <div class="board">
-        <div class="topic">Topic: ${room.topic || "Topic"}</div>
+        <div class="topic">${room.topic || "Topic"}</div>
         <div class="options-grid board-grid">${optionsHtml}</div>
       </div>
       <p class="notice">Tap your name to reveal your role.</p>
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${waitingPlayers.length ? `<p class="notice">${waitingPlayers.length} player${waitingPlayers.length === 1 ? "" : "s"} queued for next round.</p>` : ""}
-      <div class="vote-block">
-        ${voteHtml}
-      </div>
-      <div class="row" style="justify-content: flex-end;">
+      ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
+      <div class="row action-row game-actions">
+        <button id="call-vote" class="button action-left" ${inRound && room.voteStatus !== "open" ? "" : "disabled"}>Call Vote</button>
         <button id="new-round" class="button">New Round</button>
         <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
