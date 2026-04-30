@@ -15,8 +15,7 @@ import {
   onSnapshot,
   serverTimestamp,
   runTransaction,
-  writeBatch,
-  increment
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -33,32 +32,20 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const roomsCol = collection(db, "rooms");
+const roomId = "default";
+const roomRef = doc(db, "rooms", roomId);
+const playersCol = collection(roomRef, "players");
 
 const statusEl = document.getElementById("status");
 const screenEl = document.getElementById("screen");
 const headerActionsEl = document.getElementById("header-actions");
 
 let topics = [];
-let lobbies = [];
-let lobbyUnsub = null;
-let roomUnsub = null;
-let playersUnsub = null;
-let currentPlayerUnsub = null;
-
-let lobbyId = null;
-let roomRef = null;
-let playersCol = null;
-
 let room = null;
 let players = [];
 let currentUser = null;
 let currentPlayer = null;
-
 let nameDraft = localStorage.getItem("chameleon_name") || "";
-let lobbyNameDraft = "";
-let lobbyCodeDraft = "";
-let view = "lobbies"; // lobbies | lobby
 let gameView = "list"; // list | reveal
 let revealPlayerId = null;
 let voteFinalizeInProgress = false;
@@ -76,242 +63,11 @@ function shuffleArray(items) {
   return copy;
 }
 
-function generateLobbyCode(length = 5) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < length; i += 1) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-function normalizeCode(value) {
-  return value.trim().toUpperCase();
-}
-
-function clearLobbySubscriptions() {
-  if (roomUnsub) roomUnsub();
-  if (playersUnsub) playersUnsub();
-  if (currentPlayerUnsub) currentPlayerUnsub();
-  roomUnsub = null;
-  playersUnsub = null;
-  currentPlayerUnsub = null;
-}
-
-async function loadTopics() {
-  try {
-    const response = await fetch("chameleon_topics.json");
-    const data = await response.json();
-    topics = Array.isArray(data) ? data : [];
-  } catch (error) {
-    topics = [];
-  }
-}
-
-function subscribeLobbies() {
-  if (lobbyUnsub) lobbyUnsub();
-  const q = query(roomsCol, orderBy("updatedAt", "desc"));
-  lobbyUnsub = onSnapshot(q, (snap) => {
-    lobbies = snap.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data()
-    }));
-    if (view === "lobbies") {
-      render();
-    }
-  });
-}
-
-async function createLobby() {
-  const lobbyName = lobbyNameDraft.trim();
-  setStatus("Creating lobby...");
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const code = generateLobbyCode();
-    const ref = doc(roomsCol, code);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      continue;
-    }
-    await setDoc(ref, {
-      name: lobbyName || `Lobby ${code}`,
-      status: "waiting",
-      playerCount: 0,
-      round: 0,
-      topicBag: [],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    lobbyNameDraft = "";
-    await enterLobby(code);
-    return;
-  }
-  setStatus("Unable to create a lobby. Try again.");
-}
-
-async function joinLobbyByCode(codeInput) {
-  const code = normalizeCode(codeInput || lobbyCodeDraft);
-  if (!code) {
-    setStatus("Enter a lobby code.");
-    return;
-  }
-  const ref = doc(roomsCol, code);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    setStatus("Lobby not found.");
-    return;
-  }
-  lobbyCodeDraft = "";
-  await enterLobby(code);
-}
-
-async function enterLobby(code) {
-  clearLobbySubscriptions();
-  lobbyId = code;
-  roomRef = doc(roomsCol, code);
-  playersCol = collection(roomRef, "players");
-  view = "lobby";
-  gameView = "list";
-  revealPlayerId = null;
-  localStorage.setItem("chameleon_last_lobby", code);
-  subscribeRoom();
-  subscribePlayers();
-  subscribeCurrentPlayer();
-  render();
-}
-
-function subscribeRoom() {
-  if (!roomRef) return;
-  roomUnsub = onSnapshot(roomRef, (snap) => {
-    if (!snap.exists()) {
-      setStatus("Lobby no longer exists.");
-      room = null;
-      leaveLobby(false);
-      return;
-    }
-    room = snap.data();
-    if (room.status !== "in_progress") {
-      gameView = "list";
-      revealPlayerId = null;
-    }
-    render();
-  });
-}
-
-function subscribePlayers() {
-  if (!playersCol) return;
-  const q = query(playersCol, orderBy("joinedAt", "asc"));
-  playersUnsub = onSnapshot(q, (snap) => {
-    players = snap.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data()
-    }));
-    render();
-  });
-}
-
-function subscribeCurrentPlayer() {
-  if (!currentUser || !playersCol) return;
-  const playerRef = doc(playersCol, currentUser.uid);
-  currentPlayerUnsub = onSnapshot(playerRef, (snap) => {
-    currentPlayer = snap.exists() ? { id: snap.id, ...snap.data() } : null;
-    if (currentPlayer && !nameDraft) {
-      nameDraft = currentPlayer.name || "";
-    }
-    render();
-  });
-}
-
-async function joinRoom() {
-  if (!currentUser || !roomRef || !playersCol) return;
-  const name = nameDraft.trim();
-  if (!name) {
-    setStatus("Enter a name to join.");
-    return;
-  }
-
-  const playerRef = doc(playersCol, currentUser.uid);
-  try {
-    await runTransaction(db, async (tx) => {
-      const roomSnap = await tx.get(roomRef);
-      if (!roomSnap.exists()) {
-        throw new Error("missing-room");
-      }
-      const playerSnap = await tx.get(playerRef);
-      if (playerSnap.exists()) {
-        tx.update(playerRef, {
-          name,
-          lastSeen: serverTimestamp()
-        });
-      } else {
-        tx.set(playerRef, {
-          name,
-          joinedAt: serverTimestamp(),
-          lastSeen: serverTimestamp()
-        });
-        tx.update(roomRef, {
-          playerCount: increment(1)
-        });
-      }
-      tx.update(roomRef, {
-        updatedAt: serverTimestamp()
-      });
-    });
-    localStorage.setItem("chameleon_name", name);
-  } catch (error) {
-    setStatus("Unable to join lobby.");
-  }
-}
-
-async function removeCurrentPlayer() {
-  if (!currentUser || !roomRef || !playersCol) return;
-  const playerRef = doc(playersCol, currentUser.uid);
-  try {
-    await runTransaction(db, async (tx) => {
-      const roomSnap = await tx.get(roomRef);
-      if (!roomSnap.exists()) return;
-      const playerSnap = await tx.get(playerRef);
-      if (!playerSnap.exists()) return;
-      tx.delete(playerRef);
-      tx.update(roomRef, {
-        playerCount: increment(-1),
-        updatedAt: serverTimestamp()
-      });
-    });
-  } catch (error) {
-    // ignore
-  }
-}
-
-async function leaveLobby(shouldRemovePlayer = true) {
-  if (shouldRemovePlayer) {
-    await removeCurrentPlayer();
-  }
-  clearLobbySubscriptions();
-  lobbyId = null;
-  roomRef = null;
-  playersCol = null;
-  room = null;
-  players = [];
-  currentPlayer = null;
-  view = "lobbies";
-  gameView = "list";
-  revealPlayerId = null;
-  render();
-}
-
-async function clearPlayers() {
-  if (!roomRef || !room || room.status !== "waiting") return;
-  const snap = await getDocs(playersCol);
-  if (snap.empty) return;
-  const batch = writeBatch(db);
-  snap.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-  });
-  batch.update(roomRef, {
-    playerCount: 0,
-    updatedAt: serverTimestamp()
-  });
-  await batch.commit();
+function sanitizeTopicBag(topicBag) {
+  if (!Array.isArray(topicBag)) return [];
+  return topicBag.filter(
+    (value) => Number.isInteger(value) && value >= 0 && value < topics.length
+  );
 }
 
 function getRoundPlayerIds() {
@@ -328,21 +84,130 @@ function getRoundPlayerIds() {
 
 function isCurrentUserInRound() {
   if (!currentUser) return false;
-  const roundIds = getRoundPlayerIds();
-  return roundIds.includes(currentUser.uid);
+  return getRoundPlayerIds().includes(currentUser.uid);
 }
 
-function sanitizeTopicBag(topicBag) {
-  if (!Array.isArray(topicBag)) return [];
-  return topicBag.filter(
-    (value) => Number.isInteger(value) && value >= 0 && value < topics.length
-  );
+function getCurrentOptions() {
+  if (!room) return [];
+  if (typeof room.topicIndex === "number" && topics[room.topicIndex]) {
+    return Array.isArray(topics[room.topicIndex].options)
+      ? topics[room.topicIndex].options
+      : [];
+  }
+  const match = topics.find((item) => item.topic === room.topic);
+  return match && Array.isArray(match.options) ? match.options : [];
+}
+
+async function loadTopics() {
+  try {
+    const response = await fetch("chameleon_topics.json");
+    const data = await response.json();
+    topics = Array.isArray(data) ? data : [];
+  } catch (error) {
+    topics = [];
+  }
+}
+
+async function ensureRoom() {
+  const snap = await getDoc(roomRef);
+  if (snap.exists()) return;
+  await setDoc(roomRef, {
+    status: "waiting",
+    round: 0,
+    topicBag: [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+}
+
+function subscribeRoom() {
+  onSnapshot(roomRef, (snap) => {
+    room = snap.exists() ? snap.data() : { status: "waiting", round: 0 };
+    if (room.status !== "in_progress") {
+      gameView = "list";
+      revealPlayerId = null;
+    }
+    render();
+  });
+}
+
+function subscribePlayers() {
+  const q = query(playersCol, orderBy("joinedAt", "asc"));
+  onSnapshot(q, (snap) => {
+    players = snap.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+    render();
+  });
+}
+
+function subscribeCurrentPlayer() {
+  if (!currentUser) return;
+  const playerRef = doc(playersCol, currentUser.uid);
+  onSnapshot(playerRef, (snap) => {
+    currentPlayer = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    if (currentPlayer && !nameDraft) {
+      nameDraft = currentPlayer.name || "";
+    }
+    render();
+  });
+}
+
+async function joinRoom() {
+  if (!currentUser) return;
+  const name = nameDraft.trim();
+  if (!name) {
+    setStatus("Enter a name to join.");
+    return;
+  }
+
+  const playerRef = doc(playersCol, currentUser.uid);
+  const snap = await getDoc(playerRef);
+  if (snap.exists()) {
+    await updateDoc(playerRef, {
+      name,
+      lastSeen: serverTimestamp()
+    });
+  } else {
+    await setDoc(playerRef, {
+      name,
+      joinedAt: serverTimestamp(),
+      lastSeen: serverTimestamp()
+    });
+  }
+
+  await updateDoc(roomRef, {
+    updatedAt: serverTimestamp()
+  });
+  localStorage.setItem("chameleon_name", name);
+}
+
+async function leaveRoom() {
+  if (!currentUser) return;
+  const playerRef = doc(playersCol, currentUser.uid);
+  await deleteDoc(playerRef);
+  nameDraft = localStorage.getItem("chameleon_name") || "";
+}
+
+async function clearPlayers() {
+  if (!room || room.status !== "waiting") return;
+  const snap = await getDocs(playersCol);
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  snap.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+  batch.update(roomRef, {
+    updatedAt: serverTimestamp()
+  });
+  await batch.commit();
 }
 
 async function startRound() {
-  if (!roomRef || !room) return;
+  if (!room) return;
   if (!currentPlayer) {
-    setStatus("Join the lobby to start a round.");
+    setStatus("Join the room to start a round.");
     return;
   }
   if (players.length === 0) {
@@ -366,11 +231,13 @@ async function startRound() {
       if (!snap.exists()) {
         throw new Error("missing-room");
       }
+
       const data = snap.data() || {};
       let topicBag = sanitizeTopicBag(data.topicBag);
       if (topicBag.length === 0) {
         topicBag = shuffleArray([...Array(topics.length).keys()]);
       }
+
       const topicIndex = topicBag.pop();
       const topic = topics[topicIndex] || { topic: "Topic", options: [] };
       const options = Array.isArray(topic.options)
@@ -380,24 +247,23 @@ async function startRound() {
         ? options[Math.floor(Math.random() * options.length)]
         : "";
       const chameleonId = roundPlayerIds[Math.floor(Math.random() * roundPlayerIds.length)];
-      const round = (data.round || 0) + 1;
 
       tx.set(
         roomRef,
         {
           status: "in_progress",
+          round: (data.round || 0) + 1,
           topic: topic.topic || "Topic",
           topicIndex,
           word,
           chameleonId,
+          roundPlayerIds,
+          topicBag,
           voteStatus: "inactive",
           votes: {},
           voteResults: deleteField(),
           startedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          round,
-          roundPlayerIds,
-          topicBag
+          updatedAt: serverTimestamp()
         },
         { merge: true }
       );
@@ -408,7 +274,7 @@ async function startRound() {
 }
 
 async function endRound() {
-  if (!roomRef || !room) return;
+  if (!room) return;
   await updateDoc(roomRef, {
     status: "waiting",
     voteStatus: "inactive",
@@ -422,7 +288,7 @@ async function endRound() {
 
 async function callVote() {
   if (!room || room.status !== "in_progress") return;
-  if (!currentPlayer) return;
+  if (!currentPlayer || !isCurrentUserInRound()) return;
   if (room.voteStatus === "open") return;
   await updateDoc(roomRef, {
     voteStatus: "open",
@@ -438,9 +304,11 @@ async function castVote(targetId) {
   if (room.voteStatus !== "open") return;
   if (!currentUser || !targetId) return;
   if (!isCurrentUserInRound()) return;
+
   const roundIds = getRoundPlayerIds();
   if (!roundIds.includes(targetId)) return;
   if (targetId === currentUser.uid) return;
+
   await updateDoc(roomRef, {
     [`votes.${currentUser.uid}`]: targetId,
     updatedAt: serverTimestamp()
@@ -462,6 +330,7 @@ async function finalizeVoteIfReady() {
   if (voteFinalizeInProgress) return;
   if (!room || room.status !== "in_progress") return;
   if (room.voteStatus !== "open") return;
+
   const roundIds = getRoundPlayerIds();
   if (!roundIds.length) return;
 
@@ -472,13 +341,13 @@ async function finalizeVoteIfReady() {
       roundVotes[playerId] = votes[playerId];
     }
   });
+
   const voteCount = Object.keys(roundVotes).length;
   if (voteCount < roundIds.length) return;
 
   const tally = {};
   Object.values(roundVotes).forEach((targetId) => {
-    if (!targetId) return;
-    if (!roundIds.includes(targetId)) return;
+    if (!targetId || !roundIds.includes(targetId)) return;
     tally[targetId] = (tally[targetId] || 0) + 1;
   });
 
@@ -505,125 +374,19 @@ async function finalizeVoteIfReady() {
   }
 }
 
-function getCurrentOptions() {
-  if (!room) return [];
-  if (typeof room.topicIndex === "number" && topics[room.topicIndex]) {
-    return Array.isArray(topics[room.topicIndex].options)
-      ? topics[room.topicIndex].options
-      : [];
-  }
-  const match = topics.find((item) => item.topic === room.topic);
-  return match && Array.isArray(match.options) ? match.options : [];
-}
-
 function renderHeaderActions() {
   if (!headerActionsEl) return;
   headerActionsEl.innerHTML = "";
-  if (view === "lobby") {
-    headerActionsEl.innerHTML = `
-      <button id="back-lobbies" class="button ghost">Lobby Directory</button>
-    `;
-    const backBtn = document.getElementById("back-lobbies");
-    if (backBtn) {
-      backBtn.addEventListener("click", () => leaveLobby(true));
-    }
-  }
 }
 
-function renderLobbyDirectory() {
-  const lastLobby = localStorage.getItem("chameleon_last_lobby");
-  const lobbiesHtml = lobbies.length
-    ? lobbies
-        .map((lobby) => {
-          const lobbyName = lobby.name || `Lobby ${lobby.id}`;
-          const statusLabel = lobby.status === "in_progress" ? "In progress" : "Waiting";
-          const count = Number.isInteger(lobby.playerCount) ? lobby.playerCount : 0;
-          return `
-            <li class="list-item">
-              <div>
-                <div class="title">${lobbyName}</div>
-                <div class="meta">Code: ${lobby.id} • ${count} player${count === 1 ? "" : "s"} • ${statusLabel}</div>
-              </div>
-              <button class="button secondary" data-lobby="${lobby.id}">Join</button>
-            </li>
-          `;
-        })
-        .join("")
-    : `<li class="notice">No lobbies yet. Create one to get started.</li>`;
-
-  screenEl.innerHTML = `
-    <div class="card">
-      <h2>Lobby Directory</h2>
-      <p class="notice">Create a lobby or jump into one that is already running.</p>
-      <div class="row">
-        <input id="lobby-name" class="input" type="text" placeholder="Lobby name (optional)" value="${lobbyNameDraft}" />
-        <button id="create-lobby" class="button">Create Lobby</button>
-      </div>
-      <div class="row">
-        <input id="lobby-code" class="input" type="text" placeholder="Enter lobby code" value="${lobbyCodeDraft}" />
-        <button id="join-lobby" class="button secondary">Join Lobby</button>
-      </div>
-      ${lastLobby ? `<div class="row"><button id="rejoin-last" class="button ghost">Rejoin ${lastLobby}</button></div>` : ""}
-    </div>
-    <div class="card">
-      <h3 class="section-title">Active Lobbies</h3>
-      <ul class="list" id="lobby-list">${lobbiesHtml}</ul>
-    </div>
-  `;
-
-  const nameInput = document.getElementById("lobby-name");
-  const codeInput = document.getElementById("lobby-code");
-  if (nameInput) {
-    nameInput.addEventListener("input", (event) => {
-      lobbyNameDraft = event.target.value;
-    });
-  }
-  if (codeInput) {
-    codeInput.addEventListener("input", (event) => {
-      lobbyCodeDraft = event.target.value;
-    });
-  }
-
-  const createBtn = document.getElementById("create-lobby");
-  if (createBtn) {
-    createBtn.addEventListener("click", createLobby);
-  }
-
-  const joinBtn = document.getElementById("join-lobby");
-  if (joinBtn) {
-    joinBtn.addEventListener("click", () => joinLobbyByCode());
-  }
-
-  const rejoinBtn = document.getElementById("rejoin-last");
-  if (rejoinBtn) {
-    rejoinBtn.addEventListener("click", () => joinLobbyByCode(lastLobby));
-  }
-
-  const listEl = document.getElementById("lobby-list");
-  if (listEl) {
-    listEl.addEventListener("click", (event) => {
-      const button = event.target.closest("button");
-      if (!button) return;
-      const code = button.dataset.lobby;
-      if (code) {
-        joinLobbyByCode(code);
-      }
-    });
-  }
-}
-
-function renderLobbyWaiting() {
-  const lobbyName = room?.name || `Lobby ${lobbyId}`;
-  const count = Number.isInteger(room?.playerCount) ? room.playerCount : players.length;
-  const canStart = players.length > 0 && topics.length > 0;
+function renderWaiting() {
   const playerList = players
     .map((player) => {
       const isYou = player.id === currentUser?.uid;
-      const pill = isYou ? '<span class="pill">You</span>' : "";
       return `
         <li class="list-item">
           <span>${player.name || "Player"}</span>
-          ${pill}
+          ${isYou ? '<span class="pill">You</span>' : ""}
         </li>
       `;
     })
@@ -631,24 +394,16 @@ function renderLobbyWaiting() {
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="lobby-header">
-        <div>
-          <div class="eyebrow">Lobby</div>
-          <h2>${lobbyName}</h2>
-          <div class="lobby-meta">Code: <span class="code">${lobbyId}</span> • ${count} player${count === 1 ? "" : "s"}</div>
-        </div>
-        <div class="row">
-          <button id="copy-code" class="button secondary">Copy Code</button>
-          <button id="leave-lobby" class="button ghost">Leave Lobby</button>
-        </div>
-      </div>
+      <h2>Board Ready</h2>
+      <p class="notice">Everyone joins here. Start a round whenever your group is ready.</p>
       <div class="row">
         <input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" />
-        <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Lobby"}</button>
+        <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Game"}</button>
       </div>
       <div class="row">
-        <button id="start-round" class="button" ${canStart ? "" : "disabled"}>Start Round</button>
+        <button id="start-round" class="button" ${players.length && topics.length ? "" : "disabled"}>Start Round</button>
         <button id="clear-players" class="button secondary" ${players.length ? "" : "disabled"}>Clear Players</button>
+        ${currentPlayer ? '<button id="leave-room" class="button ghost">Leave</button>' : ""}
       </div>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
     </div>
@@ -676,38 +431,27 @@ function renderLobbyWaiting() {
     clearBtn.addEventListener("click", clearPlayers);
   }
 
-  const leaveBtn = document.getElementById("leave-lobby");
+  const leaveBtn = document.getElementById("leave-room");
   if (leaveBtn) {
-    leaveBtn.addEventListener("click", () => leaveLobby(true));
-  }
-
-  const copyBtn = document.getElementById("copy-code");
-  if (copyBtn) {
-    copyBtn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(lobbyId);
-        setStatus("Lobby code copied.");
-      } catch (error) {
-        setStatus("Unable to copy lobby code.");
-      }
-    });
+    leaveBtn.addEventListener("click", leaveRoom);
   }
 }
 
-function renderLobbyGame() {
-  const lobbyName = room?.name || `Lobby ${lobbyId}`;
-  const count = Number.isInteger(room?.playerCount) ? room.playerCount : players.length;
-  const roundNumber = room?.round || 0;
+function renderGame() {
+  if (!room) return;
+
+  const roundNumber = room.round || 0;
   const roundIds = getRoundPlayerIds();
-  const inRound = isCurrentUserInRound();
   const roundPlayers = players.filter((player) => roundIds.includes(player.id));
   const waitingPlayers = players.filter((player) => !roundIds.includes(player.id));
+  const inRound = isCurrentUserInRound();
 
   const joinNotice = !currentPlayer
-    ? "Join the lobby to participate in this round."
+    ? "You are spectating. Join now to play next round."
     : !inRound
-      ? "This round is already running. You'll join the next round."
+      ? "You joined during this round. You are queued for next round."
       : "";
+
   const options = getCurrentOptions();
   const optionsHtml = options.length
     ? options.map((option) => `<div class="option-card">${option}</div>`).join("")
@@ -739,7 +483,7 @@ function renderLobbyGame() {
 
   let voteHtml = `
     <div class="row" style="justify-content: flex-end;">
-      <button id="call-vote" class="button">Call Vote</button>
+      <button id="call-vote" class="button" ${inRound ? "" : "disabled"}>Call Vote</button>
     </div>
   `;
 
@@ -752,7 +496,7 @@ function renderLobbyGame() {
         const buttonClass = selected ? "button" : "button secondary";
         return `
           <li class="list-item">
-            <button class="${buttonClass}" data-id="${player.id}" style="width: 100%;">
+            <button class="${buttonClass}" data-id="${player.id}" style="width: 100%;" ${inRound ? "" : "disabled"}>
               ${player.name || "Player"}
             </button>
           </li>
@@ -789,27 +533,23 @@ function renderLobbyGame() {
         ${resultsHtml || '<li class="notice">No votes recorded.</li>'}
       </ul>
       <div class="row" style="justify-content: flex-end;">
-        <button id="call-vote" class="button">Call Vote</button>
+        <button id="call-vote" class="button" ${inRound ? "" : "disabled"}>Call Vote</button>
       </div>
     `;
   }
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="lobby-header">
+      <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
         <div>
-          <div class="eyebrow">Lobby</div>
-          <h2>${lobbyName}</h2>
-          <div class="lobby-meta">Code: <span class="code">${lobbyId}</span> • ${count} player${count === 1 ? "" : "s"} • Round ${roundNumber}</div>
+          <div class="eyebrow">Round ${roundNumber}</div>
+          <div class="title">Live Board</div>
         </div>
         <div class="row">
-          <button id="copy-code" class="button secondary">Copy Code</button>
-          <button id="leave-lobby" class="button ghost">Leave Lobby</button>
+          <input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" />
+          <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Game"}</button>
+          ${currentPlayer ? '<button id="leave-room" class="button ghost">Leave</button>' : ""}
         </div>
-      </div>
-      <div class="row">
-        <input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" />
-        <button id="join-button" class="button">${currentPlayer ? "Update Name" : "Join Lobby"}</button>
       </div>
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <div class="board">
@@ -820,7 +560,7 @@ function renderLobbyGame() {
         <button id="new-round" class="button">New Round</button>
         <button id="end-round" class="button secondary">End Round</button>
       </div>
-      <p class="notice">Click your name to reveal your role.</p>
+      <p class="notice">Tap your name to reveal your role.</p>
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${waitingPlayers.length ? `<p class="notice">${waitingPlayers.length} player${waitingPlayers.length === 1 ? "" : "s"} queued for next round.</p>` : ""}
       <div class="vote-block">
@@ -841,6 +581,11 @@ function renderLobbyGame() {
     joinBtn.addEventListener("click", joinRoom);
   }
 
+  const leaveBtn = document.getElementById("leave-room");
+  if (leaveBtn) {
+    leaveBtn.addEventListener("click", leaveRoom);
+  }
+
   const newRoundBtn = document.getElementById("new-round");
   if (newRoundBtn) {
     newRoundBtn.addEventListener("click", startRound);
@@ -855,8 +600,7 @@ function renderLobbyGame() {
   if (listEl) {
     listEl.addEventListener("click", (event) => {
       const button = event.target.closest("button");
-      if (!button) return;
-      if (button.disabled) return;
+      if (!button || button.disabled) return;
       const targetId = button.dataset.id || null;
       if (!targetId || targetId !== currentUser?.uid) return;
       revealPlayerId = targetId;
@@ -879,49 +623,32 @@ function renderLobbyGame() {
   if (voteListEl) {
     voteListEl.addEventListener("click", (event) => {
       const button = event.target.closest("button");
-      if (!button) return;
+      if (!button || button.disabled) return;
       const targetId = button.dataset.id;
       if (targetId) {
         castVote(targetId);
       }
     });
   }
-
-  const leaveBtn = document.getElementById("leave-lobby");
-  if (leaveBtn) {
-    leaveBtn.addEventListener("click", () => leaveLobby(true));
-  }
-
-  const copyBtn = document.getElementById("copy-code");
-  if (copyBtn) {
-    copyBtn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(lobbyId);
-        setStatus("Lobby code copied.");
-      } catch (error) {
-        setStatus("Unable to copy lobby code.");
-      }
-    });
-  }
 }
 
 function renderReveal() {
-  const roundIds = getRoundPlayerIds();
-  const isInRound = currentUser ? roundIds.includes(currentUser.uid) : false;
+  if (!room) return;
+  const isInRound = isCurrentUserInRound();
   const player = players.find((item) => item.id === revealPlayerId);
   const playerName = player?.name || "Player";
-  const isChameleon = revealPlayerId === room?.chameleonId;
+  const isChameleon = revealPlayerId === room.chameleonId;
 
   screenEl.innerHTML = `
     <div class="card">
       <h2>Player: ${playerName}</h2>
-      <div class="topic">Topic: ${room?.topic || "Topic"}</div>
+      <div class="topic">Topic: ${room.topic || "Topic"}</div>
       ${
         !isInRound
           ? `<div class="notice">You are queued for the next round.</div>`
           : isChameleon
             ? `<div class="role">You are the Chameleon</div>`
-            : `<div class="role">Your word</div><div class="word">${room?.word || "No word available"}</div>`
+            : `<div class="role">Your word</div><div class="word">${room.word || "No word available"}</div>`
       }
       <button id="done" class="button">Done</button>
     </div>
@@ -938,36 +665,23 @@ function renderReveal() {
 }
 
 function render() {
-  if (!currentUser) {
+  if (!currentUser || !room) {
     setStatus("Connecting...");
-    if (headerActionsEl) {
-      headerActionsEl.innerHTML = "";
-    }
-    return;
-  }
-
-  renderHeaderActions();
-
-  if (view === "lobbies") {
-    setStatus("Lobby directory");
-    renderLobbyDirectory();
-    return;
-  }
-
-  if (!room) {
-    setStatus("Connecting to lobby...");
+    renderHeaderActions();
     screenEl.innerHTML = `
       <div class="card">
-        <div class="full-message">Connecting to lobby...</div>
-        <p class="notice">Hang tight while we sync the room.</p>
+        <div class="full-message">Connecting...</div>
+        <p class="notice">Syncing room state.</p>
       </div>
     `;
     return;
   }
 
+  renderHeaderActions();
+
   if (room.status === "waiting") {
     setStatus(`Waiting room • ${players.length} player${players.length === 1 ? "" : "s"}`);
-    renderLobbyWaiting();
+    renderWaiting();
     return;
   }
 
@@ -977,7 +691,7 @@ function render() {
     if (gameView === "reveal") {
       renderReveal();
     } else {
-      renderLobbyGame();
+      renderGame();
     }
     return;
   }
@@ -987,6 +701,7 @@ function render() {
 
 async function init() {
   await loadTopics();
+
   signInAnonymously(auth).catch(() => {
     setStatus("Failed to sign in.");
   });
@@ -994,11 +709,12 @@ async function init() {
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     if (user) {
-      subscribeLobbies();
-      render();
-    } else {
-      render();
+      await ensureRoom();
+      subscribeRoom();
+      subscribePlayers();
+      subscribeCurrentPlayer();
     }
+    render();
   });
 }
 
