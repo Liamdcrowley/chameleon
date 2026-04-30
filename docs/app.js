@@ -50,6 +50,7 @@ let gameView = "list"; // list | reveal
 let revealPlayerId = null;
 let voteFinalizeInProgress = false;
 let optionFitRafId = 0;
+let renameUnjoinInProgress = false;
 const textMeasureCanvas = document.createElement("canvas");
 const textMeasureCtx = textMeasureCanvas.getContext("2d");
 
@@ -298,11 +299,18 @@ async function joinRoom() {
   });
 }
 
-async function leaveRoom() {
+async function leaveRoom({ clearDraft = true } = {}) {
   if (!currentUser) return;
+  const leavingUserId = currentUser.uid;
+  players = players.filter((player) => player.id !== leavingUserId);
+  currentPlayer = null;
+  if (clearDraft) {
+    nameDraft = "";
+  }
+  render();
+
   const playerRef = doc(playersCol, currentUser.uid);
   await deleteDoc(playerRef);
-  nameDraft = "";
 }
 
 async function resetGame() {
@@ -517,6 +525,7 @@ function renderHeaderActions() {
 
 function renderWaiting() {
   const activePlayers = getActivePlayers();
+  const joinedPlayer = getCurrentJoinedPlayer();
   const joinUrl = window.location.href;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&margin=8&data=${encodeURIComponent(joinUrl)}`;
   const playerList = activePlayers
@@ -528,7 +537,7 @@ function renderWaiting() {
     .join("");
 
   screenEl.innerHTML = `
-    <div class="card home-start-card">
+    <div class="card action-shell">
       <div class="row action-row home-center-row">
         <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
@@ -537,14 +546,16 @@ function renderWaiting() {
       <form id="join-form" class="row join-row" autocomplete="off" novalidate>
         <input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" />
         <input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" />
-        <input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" />
-        <button id="join-button" class="button secondary home-equal-btn" type="submit">Join Game</button>
+        <input id="player-input" class="input join-input ${joinedPlayer ? "joined" : ""}" type="search" placeholder="Your name" value="${nameDraft}" />
+        <button id="join-button" class="button join-submit ${joinedPlayer ? "join-joined" : "join-ready"}" type="submit">Join</button>
       </form>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       <div class="home-qr-wrap">
         <img class="home-qr" src="${qrUrl}" alt="QR code to join the game" loading="lazy" />
       </div>
-      <div class="row action-row home-center-row home-reset-row">
+    </div>
+    <div class="card action-shell home-reset-row">
+      <div class="row action-row home-center-row">
         <button id="reset-game" class="button ghost home-equal-btn">Reset Game</button>
       </div>
     </div>
@@ -552,6 +563,33 @@ function renderWaiting() {
 
   const input = document.getElementById("player-input");
   wireNameInput(input);
+  if (input && joinedPlayer) {
+    let handled = false;
+    const startRename = async (event) => {
+      if (handled || renameUnjoinInProgress) return;
+      handled = true;
+      event.preventDefault();
+      const currentValue = input.value;
+      renameUnjoinInProgress = true;
+      try {
+        nameDraft = currentValue;
+        await leaveRoom({ clearDraft: false });
+        requestAnimationFrame(() => {
+          const freshInput = document.getElementById("player-input");
+          if (!freshInput) return;
+          freshInput.focus();
+          const cursorPos = freshInput.value.length;
+          if (typeof freshInput.setSelectionRange === "function") {
+            freshInput.setSelectionRange(cursorPos, cursorPos);
+          }
+        });
+      } finally {
+        renameUnjoinInProgress = false;
+      }
+    };
+    input.addEventListener("pointerdown", startRename, { once: true });
+    input.addEventListener("focus", startRename, { once: true });
+  }
 
   const joinForm = document.getElementById("join-form");
   if (joinForm) {
@@ -671,7 +709,7 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      ${joinedPlayer ? "" : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary" type="submit">Join Game</button></form>`}
+      ${joinedPlayer ? "" : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary" type="submit">Join</button></form>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}

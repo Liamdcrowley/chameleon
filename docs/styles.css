@@ -49,9 +49,16 @@ body {
 
 #header-actions {
   display: none;
+  width: 100%;
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+#header-actions:not(:empty) {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
 }
 
 .subtitle {
@@ -105,7 +112,7 @@ body {
 
 .join-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -155,6 +162,31 @@ body {
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--accent);
+}
+
+.join-input {
+  background: #f2f2f2;
+  color: #111111;
+}
+
+.join-input.joined {
+  background: #d8d8d8;
+  border-color: #8c8c8c;
+}
+
+.join-submit {
+  width: 100%;
+  min-width: 0;
+}
+
+.button.join-ready {
+  background: #555555;
+  color: #ffffff;
+}
+
+.button.join-joined {
+  background: #1f1f1f;
+  color: #f1f1f1;
 }
 
 #call-vote,
@@ -307,6 +339,12 @@ body {
 
 .home-reset-row {
   margin-top: 14px;
+}
+
+.action-shell {
+  background: transparent;
+  border-color: transparent;
+  padding: 22px 24px;
 }
 
 .home-equal-btn {
