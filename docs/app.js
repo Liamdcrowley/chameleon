@@ -524,12 +524,12 @@ function renderWaiting() {
   screenEl.innerHTML = `
     <div class="card">
       <div class="row action-row home-center-row">
-        <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
+        <button id="start-round" class="button secondary home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
       ${
         joinedPlayer
           ? ""
-          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary home-equal-btn">Join Game</button></div>`
+          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button home-equal-btn">Join Game</button></div>`
       }
       ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
