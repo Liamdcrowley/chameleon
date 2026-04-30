@@ -63,7 +63,7 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function wireNameInput(input) {
+function wireNameInput(input, { locked = false } = {}) {
   if (!input) return;
   input.setAttribute("autocomplete", "one-time-code");
   input.setAttribute("autofill", "off");
@@ -78,6 +78,14 @@ function wireNameInput(input) {
   input.setAttribute("data-1p-ignore", "true");
   input.setAttribute("data-bwignore", "true");
   input.readOnly = true;
+  if (locked) {
+    input.classList.add("locked-input");
+    input.setAttribute("aria-disabled", "true");
+  } else {
+    input.classList.remove("locked-input");
+    input.removeAttribute("aria-disabled");
+  }
+  if (locked) return;
   const unlock = () => {
     input.readOnly = false;
   };
@@ -531,12 +539,12 @@ function renderWaiting() {
       <div class="row action-row home-center-row">
         <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
-      ${
-        joinedPlayer
-          ? ""
-          : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary home-equal-btn" type="submit">Join Game</button></form>`
-      }
-      ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
+      <form id="join-form" class="row join-row" autocomplete="off" novalidate>
+        <input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" />
+        <input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" />
+        <input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" />
+        <button id="join-button" class="button ${joinedPlayer ? "ghost" : "secondary"} home-equal-btn" type="submit">Join Game</button>
+      </form>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       <div class="home-qr-wrap">
         <img class="home-qr" src="${qrUrl}" alt="QR code to join the game" loading="lazy" />
@@ -548,7 +556,7 @@ function renderWaiting() {
   `;
 
   const input = document.getElementById("player-input");
-  wireNameInput(input);
+  wireNameInput(input, { locked: Boolean(joinedPlayer) });
 
   const joinForm = document.getElementById("join-form");
   if (joinForm) {
@@ -566,11 +574,6 @@ function renderWaiting() {
   const startBtn = document.getElementById("start-round");
   if (startBtn) {
     startBtn.addEventListener("click", startRound);
-  }
-
-  const leaveBtn = document.getElementById("leave-room");
-  if (leaveBtn) {
-    leaveBtn.addEventListener("click", leaveRoom);
   }
 
   const resetBtn = document.getElementById("reset-game");

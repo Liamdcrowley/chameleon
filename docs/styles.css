@@ -103,6 +103,10 @@ body {
   font-size: 14px;
 }
 
+.input.locked-input {
+  pointer-events: none;
+}
+
 .join-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
