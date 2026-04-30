@@ -50,6 +50,8 @@ let gameView = "list"; // list | reveal
 let revealPlayerId = null;
 let voteFinalizeInProgress = false;
 let optionFitRafId = 0;
+const textMeasureCanvas = document.createElement("canvas");
+const textMeasureCtx = textMeasureCanvas.getContext("2d");
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -119,14 +121,32 @@ function fitOptionText() {
   labels.forEach((label) => {
     const card = label.parentElement;
     if (!card) return;
-    const maxSize = 24;
-    const minSize = 11;
+    const maxSize = 22;
+    const minSize = 10;
     const maxWidth = Math.max(1, card.clientWidth - 14);
     const maxHeight = Math.max(1, card.clientHeight - 10);
+    const rawText = (label.textContent || "").trim();
+    const words = rawText.length ? rawText.split(/\s+/) : [];
 
     let size = maxSize;
     label.style.fontSize = `${size}px`;
-    while (size > minSize && (label.scrollWidth > maxWidth || label.scrollHeight > maxHeight)) {
+    while (size > minSize) {
+      const tooTall = label.scrollHeight > maxHeight;
+      let tooWideWord = false;
+
+      if (textMeasureCtx && words.length) {
+        const style = window.getComputedStyle(label);
+        textMeasureCtx.font = `${style.fontWeight} ${size}px ${style.fontFamily}`;
+        let widestWord = 0;
+        words.forEach((word) => {
+          widestWord = Math.max(widestWord, textMeasureCtx.measureText(word).width);
+        });
+        tooWideWord = widestWord > maxWidth;
+      } else {
+        tooWideWord = label.scrollWidth > maxWidth;
+      }
+
+      if (!tooTall && !tooWideWord) break;
       size -= 1;
       label.style.fontSize = `${size}px`;
     }
@@ -483,13 +503,14 @@ function renderWaiting() {
     <div class="card">
       ${
         joinedPlayer
-          ? `<div class="row"><span class="notice">Joined as ${joinedPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button></div>`
+          ? ""
           : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
       }
-      <div class="row">
+      <div class="row action-row game-actions">
         <button id="start-round" class="button" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
-      <div class="row">
+      <div class="row split-row control-secondary">
+        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave</button>' : "<span></span>"}
         <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -619,13 +640,7 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content: flex-end; align-items: center; flex-wrap: wrap;">
-        ${
-          joinedPlayer
-            ? `<span class="notice">Joined as ${joinedPlayer.name || "Player"}.</span><button id="leave-room" class="button ghost">Leave</button>`
-            : `<div class="join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`
-        }
-      </div>
+      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button">Join Game</button></div>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <div class="board">
         <div class="topic">${room.topic || "Topic"}</div>
@@ -640,6 +655,9 @@ function renderGame() {
       <div class="row action-row game-actions">
         <button id="call-vote" class="button action-left" ${inRound && room.voteStatus !== "open" ? "" : "disabled"}>Call Vote</button>
         <button id="new-round" class="button">New Round</button>
+      </div>
+      <div class="row split-row control-secondary">
+        ${joinedPlayer ? '<button id="leave-room" class="button secondary">Leave</button>' : "<span></span>"}
         <button id="reset-game" class="button ghost">Reset Game</button>
       </div>
     </div>
@@ -757,7 +775,7 @@ function render() {
 
   if (room.status === "in_progress") {
     const activeCount = getActivePlayers().length;
-    setStatus(`Round in progress • ${activeCount} player${activeCount === 1 ? "" : "s"}`);
+    setStatus(`${activeCount} player${activeCount === 1 ? "" : "s"}`);
     finalizeVoteIfReady();
     if (gameView === "reveal") {
       renderReveal();

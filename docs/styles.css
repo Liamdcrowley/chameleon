@@ -254,6 +254,15 @@ body {
   padding: 14px 18px;
 }
 
+.split-row {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.control-secondary {
+  margin-top: 10px;
+}
+
 .option-card {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -272,8 +281,9 @@ body {
   display: block;
   width: 100%;
   line-height: 1.12;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .pill {
