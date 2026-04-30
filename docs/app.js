@@ -65,13 +65,18 @@ function setStatus(text) {
 
 function wireNameInput(input) {
   if (!input) return;
-  input.setAttribute("autocomplete", "off");
+  input.setAttribute("autocomplete", "one-time-code");
+  input.setAttribute("autofill", "off");
   input.setAttribute("autocorrect", "off");
   input.setAttribute("autocapitalize", "none");
   input.setAttribute("spellcheck", "false");
+  input.setAttribute("aria-autocomplete", "none");
   input.setAttribute("inputmode", "text");
   input.setAttribute("enterkeyhint", "done");
   input.setAttribute("name", `nickname_${Date.now()}`);
+  input.setAttribute("data-lpignore", "true");
+  input.setAttribute("data-1p-ignore", "true");
+  input.setAttribute("data-bwignore", "true");
   input.readOnly = true;
   const unlock = () => {
     input.readOnly = false;
@@ -524,12 +529,12 @@ function renderWaiting() {
   screenEl.innerHTML = `
     <div class="card">
       <div class="row action-row home-center-row">
-        <button id="start-round" class="button secondary home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
+        <button id="start-round" class="button home-equal-btn" ${activePlayers.length && topics.length ? "" : "disabled"}>Start Round</button>
       </div>
       ${
         joinedPlayer
           ? ""
-          : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button home-equal-btn">Join Game</button></div>`
+          : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button home-equal-btn" type="submit">Join Game</button></form>`
       }
       ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
@@ -545,8 +550,16 @@ function renderWaiting() {
   const input = document.getElementById("player-input");
   wireNameInput(input);
 
+  const joinForm = document.getElementById("join-form");
+  if (joinForm) {
+    joinForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      joinRoom();
+    });
+  }
+
   const joinBtn = document.getElementById("join-button");
-  if (joinBtn) {
+  if (joinBtn && !joinForm) {
     joinBtn.addEventListener("click", joinRoom);
   }
 
@@ -659,7 +672,7 @@ function renderGame() {
 
   screenEl.innerHTML = `
     <div class="card">
-      ${joinedPlayer ? "" : `<div class="row join-row"><input id="player-input" class="input" type="text" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary">Join Game</button></div>`}
+      ${joinedPlayer ? "" : `<form id="join-form" class="row join-row" autocomplete="off" novalidate><input class="autofill-decoy" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" /><input class="autofill-decoy" type="password" autocomplete="new-password" tabindex="-1" aria-hidden="true" /><input id="player-input" class="input" type="search" placeholder="Your name" value="${nameDraft}" /><button id="join-button" class="button secondary" type="submit">Join Game</button></form>`}
       ${joinNotice ? `<p class="notice">${joinNotice}</p>` : ""}
       <ul class="list" id="player-buttons">${playerList || '<li class="notice">No players yet.</li>'}</ul>
       ${voteHtml ? `<div class="vote-block">${voteHtml}</div>` : ""}
@@ -683,8 +696,16 @@ function renderGame() {
   const input = document.getElementById("player-input");
   wireNameInput(input);
 
+  const joinForm = document.getElementById("join-form");
+  if (joinForm) {
+    joinForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      joinRoom();
+    });
+  }
+
   const joinBtn = document.getElementById("join-button");
-  if (joinBtn) {
+  if (joinBtn && !joinForm) {
     joinBtn.addEventListener("click", joinRoom);
   }
 
