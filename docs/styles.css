@@ -293,6 +293,19 @@ body {
   min-width: 140px;
 }
 
+.home-qr-wrap {
+  margin-top: 14px;
+}
+
+.home-qr {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+}
+
 .option-card {
   border: 1px solid var(--border);
   border-radius: 12px;

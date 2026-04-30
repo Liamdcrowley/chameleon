@@ -491,6 +491,8 @@ function renderHeaderActions() {
 function renderWaiting() {
   const activePlayers = getActivePlayers();
   const joinedPlayer = getCurrentJoinedPlayer();
+  const joinUrl = window.location.href;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&margin=8&data=${encodeURIComponent(joinUrl)}`;
   const playerList = activePlayers
     .map((player) => `
       <li class="list-item">
@@ -511,6 +513,9 @@ function renderWaiting() {
       }
       ${joinedPlayer ? `<div class="row split-row control-secondary"><button id="leave-room" class="button secondary">Leave Game</button><span></span></div>` : ""}
       <ul class="list">${playerList || '<li class="notice">No players yet.</li>'}</ul>
+      <div class="home-qr-wrap">
+        <img class="home-qr" src="${qrUrl}" alt="QR code to join the game" loading="lazy" />
+      </div>
       <div class="row action-row home-center-row home-reset-row">
         <button id="reset-game" class="button ghost home-equal-btn">Reset Game</button>
       </div>
